@@ -41,7 +41,7 @@ def trans_tick_df_to_tick_data(tick_df, req: SubscribeRequest) -> TickData:
     )
 
 
-class AcetockGateway(BaseGateway):
+class AcestockGateway(BaseGateway):
     default_setting: Dict[str, Any] = {
         "broker": "universal_client",
         "user": "",
@@ -139,14 +139,22 @@ class AcetockGateway(BaseGateway):
         tz = get_localzone()
         tick_datetime = datetime.now(tz)
 
-        start_datetime = datetime(
+        am_start_datetime = datetime(
             year=tick_datetime.year, month=tick_datetime.month, day=tick_datetime.day,
             hour=9, minute=30, second=0, microsecond=0, tzinfo=tz)
-        end_datetime = datetime(
+        am_end_datetime = datetime(
+            year=tick_datetime.year, month=tick_datetime.month, day=tick_datetime.day,
+            hour=11, minute=30, second=0, microsecond=0, tzinfo=tz)
+
+        pm_start_datetime = datetime(
+            year=tick_datetime.year, month=tick_datetime.month, day=tick_datetime.day,
+            hour=13, minute=0, second=0, microsecond=0, tzinfo=tz)
+        pm_end_datetime = datetime(
             year=tick_datetime.year, month=tick_datetime.month, day=tick_datetime.day,
             hour=15, minute=0, second=0, microsecond=0, tzinfo=tz)
 
-        while start_datetime <= tick_datetime <= end_datetime:
+        while (am_start_datetime <= tick_datetime <= am_end_datetime) \
+                or (pm_start_datetime <= tick_datetime <= pm_end_datetime):
             df1 = await loop.run_in_executor(None, partial(client.transaction, **params))
             last_tick_df = last_tick_df.append(df1).drop_duplicates()
             if len(last_tick_df) != 1:
