@@ -47,7 +47,7 @@ class AcestockGateway(BaseGateway):
         self.loop: AbstractEventLoop = None
         self.contracts_dict = dict()
 
-        self.td_api = ""
+        self.td_api = None
         self.td_api_setting = {}
         self.non_ths_client_list = ['htzq_client', 'ht_client', "gj_client"]
         self.ths_client_list = ['universal_client']
@@ -103,7 +103,8 @@ class AcestockGateway(BaseGateway):
 
     def close(self) -> None:
         """关闭接口"""
-        self.td_api.exit()
+        if self.td_api is not None:
+            self.td_api.exit()
         self.write_log("交易服务器断开连接")
         self.md_api.close()
         self.write_log("行情服务器断开连接")
