@@ -4,17 +4,17 @@ from asyncio import AbstractEventLoop
 from copy import copy
 from datetime import datetime
 from functools import partial
-from typing import Dict, Any
+from typing import Dict, Any, List
 from tzlocal import get_localzone
 
 from easytrader import remoteclient
 from jotdx.quotes import Quotes
 from jotdx.consts import MARKET_SH, MARKET_SZ
 
-from vnpy.event import EventEngine, EVENT_TIMER
+from vnpy.event import EventEngine
 from vnpy.trader.constant import Offset, Status, Exchange, Direction, Product
 from vnpy.trader.gateway import BaseGateway
-from vnpy.trader.object import SubscribeRequest, OrderRequest, CancelRequest, PositionData, OrderData, AccountData, \
+from vnpy.trader.object import SubscribeRequest, OrderRequest, CancelRequest, PositionData, AccountData, \
     ContractData, TickData
 
 # 交易所映射
@@ -24,24 +24,8 @@ MARKET2VT: Dict[str, Exchange] = {
 }
 
 
-def trans_tick_df_to_tick_data(tick_df, req: SubscribeRequest) -> TickData:
-    # buyorsell, 0 buy, 1 sell
-    # buyorsell = tick_df['buyorsell'][0]
-
-    return TickData(
-        gateway_name="paper",
-        symbol=req.symbol,
-        exchange=req.exchange,
-        datetime=datetime.now(get_localzone()),
-        volume=tick_df['vol'][0],
-        # num 放到turnover, 因为在bargenerater里面,
-        # turnover是累加计算的, open_interest 是不算累加的而取截面的
-        turnover=tick_df['num'][0],
-        last_price=tick_df['price'][0],
-    )
-
-
 class AcestockGateway(BaseGateway):
+    gateway_name = "acestock"
     default_setting: Dict[str, Any] = {
         "broker": "universal_client",
         "user": "",
@@ -51,8 +35,9 @@ class AcestockGateway(BaseGateway):
         "host": "",
         "port": "1430"
     }
+    exchanges: List[Exchange] = [Exchange.SSE, Exchange.SZSE]
 
-    def __init__(self, event_engine: EventEngine, gateway_name: str = "acetock"):
+    def __init__(self, event_engine: EventEngine, gateway_name: str = gateway_name):
         """构造函数"""
         super().__init__(event_engine, gateway_name)
 
@@ -60,6 +45,7 @@ class AcestockGateway(BaseGateway):
         self.md_api_subscribe_req_list = []
         self.md_thread: threading.Thread = None
         self.loop: AbstractEventLoop = None
+        self.contracts_dict = dict()
 
         self.td_api = ""
         self.td_api_setting = {}
@@ -129,7 +115,30 @@ class AcestockGateway(BaseGateway):
             coroutine = self.query_tick(req)
             asyncio.run_coroutine_threadsafe(coroutine, self.loop)
 
+    def trans_tick_df_to_tick_data(self, tick_df, req: SubscribeRequest) -> TickData:
+        # buyorsell, 0 buy, 1 sell
+        # buyorsell = tick_df['buyorsell'][0]
+
+        if self.contracts_dict[req.vt_symbol].product == Product.EQUITY:
+            last_price = tick_df['price'][0]
+        else:
+            last_price = round(tick_df['price'][0] / 10, 2)
+
+        return TickData(
+            gateway_name=self.gateway_name,
+            name=self.contracts_dict[req.vt_symbol].name,
+            symbol=req.symbol,
+            exchange=req.exchange,
+            datetime=datetime.now(get_localzone()),
+            volume=tick_df['vol'][0],
+            # num 放到turnover, 因为在bargenerater里面,
+            # turnover是累加计算的, open_interest 是不算累加的而取截面的
+            turnover=tick_df['num'][0],
+            last_price=last_price,
+        )
+
     async def query_tick(self, req: SubscribeRequest):
+
         client = Quotes.factory(market='std')
         loop = asyncio.get_event_loop()
 
@@ -153,13 +162,16 @@ class AcestockGateway(BaseGateway):
             year=tick_datetime.year, month=tick_datetime.month, day=tick_datetime.day,
             hour=15, minute=0, second=0, microsecond=0, tzinfo=tz)
 
+        tick = self.trans_tick_df_to_tick_data(last_tick_df, req)
+        self.on_tick(tick)
+
         while (am_start_datetime <= tick_datetime <= am_end_datetime) \
                 or (pm_start_datetime <= tick_datetime <= pm_end_datetime):
             df1 = await loop.run_in_executor(None, partial(client.transaction, **params))
             last_tick_df = last_tick_df.append(df1).drop_duplicates()
             if len(last_tick_df) != 1:
                 last_tick_df = df1
-                tick = trans_tick_df_to_tick_data(last_tick_df, req)
+                tick = self.trans_tick_df_to_tick_data(last_tick_df, req)
                 self.on_tick(tick)
             await asyncio.sleep(1.5)
 
@@ -167,7 +179,7 @@ class AcestockGateway(BaseGateway):
             last_tick_df = last_tick_df.append(df2).drop_duplicates()
             if len(last_tick_df) != 1:
                 last_tick_df = df2
-                tick = trans_tick_df_to_tick_data(last_tick_df, req)
+                tick = self.trans_tick_df_to_tick_data(last_tick_df, req)
                 self.on_tick(tick)
 
             await asyncio.sleep(1.5)
@@ -304,6 +316,7 @@ class AcestockGateway(BaseGateway):
                         gateway_name=self.gateway_name,
                     )
                     self.on_contract(contract)
+                    self.contracts_dict[contract.vt_symbol] = contract
 
             for bond_df, exchange in zip([sh_bond_df, sz_bond_df], exchange_list):
                 for row in bond_df.iterrows():
@@ -320,6 +333,7 @@ class AcestockGateway(BaseGateway):
                         gateway_name=self.gateway_name,
                     )
                     self.on_contract(contract)
+                    self.contracts_dict[contract.vt_symbol] = contract
 
             for etf_df, exchange in zip([sh_etf_df, sz_etf_df], exchange_list):
                 for row in etf_df.iterrows():
@@ -336,6 +350,7 @@ class AcestockGateway(BaseGateway):
                         gateway_name=self.gateway_name,
                     )
                     self.on_contract(contract)
+                    self.contracts_dict[contract.vt_symbol] = contract
 
         except:
             self.write_log("jotdx 行情接口获取合约信息出错")

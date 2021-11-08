@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "acestock"
-version = "0.1.1"
+version = "0.1.2"
 description = "A gateway for jonpy on A stock market."
 authors = ["FangyangJz <fangyang.jing@hotmail.com>"]
 license = "MIT"
