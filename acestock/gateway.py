@@ -2,9 +2,11 @@ import asyncio
 import threading
 from asyncio import AbstractEventLoop
 from copy import copy
-from datetime import datetime
+import datetime
 from functools import partial
 from typing import Dict, Any, List
+
+import pandas as pd
 from tzlocal import get_localzone
 
 from easytrader import remoteclient
@@ -12,15 +14,28 @@ from jotdx.quotes import Quotes
 from jotdx.consts import MARKET_SH, MARKET_SZ
 
 from vnpy.event import EventEngine
-from vnpy.trader.constant import Offset, Status, Exchange, Direction, Product
+from vnpy.trader.constant import Offset, Status, Exchange, Direction, Product, Interval
+from vnpy.trader.database import DB_TZ
 from vnpy.trader.gateway import BaseGateway
 from vnpy.trader.object import SubscribeRequest, OrderRequest, CancelRequest, PositionData, AccountData, \
-    ContractData, TickData
+    ContractData, TickData, HistoryRequest, BarData
 
 # 交易所映射
+from vnpy.trader.utility import save_pickle
+
 MARKET2VT: Dict[str, Exchange] = {
     "深A": Exchange.SZSE,
     "沪A": Exchange.SSE,
+}
+
+Interval_to_frequency_dict = {
+    Interval.MINUTE: 8,
+    Interval.MINUTE_5: 0,
+    Interval.MINUTE_15: 1,
+    Interval.MINUTE_30: 2,
+    Interval.HOUR: 3,
+    Interval.DAILY: 4,
+    Interval.WEEKLY: 5,
 }
 
 
@@ -45,7 +60,12 @@ class AcestockGateway(BaseGateway):
         self.md_api_subscribe_req_list = []
         self.md_thread: threading.Thread = None
         self.loop: AbstractEventLoop = None
-        self.contracts_dict = dict()
+        self.contracts_dict = {
+            Product.EQUITY: dict(),
+            Product.BOND: dict(),
+            Product.ETF: dict(),
+        }
+        self.save_contracts_json_file_name = f"{gateway_name}_contracts.pkl"
 
         self.td_api = None
         self.td_api_setting = {}
@@ -120,17 +140,25 @@ class AcestockGateway(BaseGateway):
         # buyorsell, 0 buy, 1 sell
         # buyorsell = tick_df['buyorsell'][0]
 
-        if self.contracts_dict[req.vt_symbol].product == Product.EQUITY:
+        if any(req.symbol.startswith(stock_code) for stock_code in ["688", "60", "002", "000", "300"]):
             last_price = tick_df['price'][0]
-        else:
+            name = self.contracts_dict[Product.EQUITY][req.vt_symbol].name
+        elif any(req.symbol.startswith(bond_code) for bond_code in ["110", "113", "127", "128", "123"]):
             last_price = round(tick_df['price'][0] / 10, 2)
+            name = self.contracts_dict[Product.BOND][req.vt_symbol].name
+        elif any(req.symbol.startswith(etf_code) for etf_code in ["58", "51", "56", "15"]):
+            last_price = round(tick_df['price'][0] / 10, 2)
+            name = self.contracts_dict[Product.ETF][req.vt_symbol].name
+        else:
+            last_price = 0.0
+            name = "未知"
 
         return TickData(
             gateway_name=self.gateway_name,
-            name=self.contracts_dict[req.vt_symbol].name,
+            name=name,
             symbol=req.symbol,
             exchange=req.exchange,
-            datetime=datetime.now(get_localzone()),
+            datetime=datetime.datetime.now(get_localzone()),
             volume=tick_df['vol'][0],
             # num 放到turnover, 因为在bargenerater里面,
             # turnover是累加计算的, open_interest 是不算累加的而取截面的
@@ -147,19 +175,19 @@ class AcestockGateway(BaseGateway):
         last_tick_df = await loop.run_in_executor(None, partial(client.transaction, **params))
 
         tz = get_localzone()
-        tick_datetime = datetime.now(tz)
+        tick_datetime = datetime.datetime.now(tz)
 
-        am_start_datetime = datetime(
+        am_start_datetime = datetime.datetime(
             year=tick_datetime.year, month=tick_datetime.month, day=tick_datetime.day,
             hour=9, minute=30, second=0, microsecond=0, tzinfo=tz)
-        am_end_datetime = datetime(
+        am_end_datetime = datetime.datetime(
             year=tick_datetime.year, month=tick_datetime.month, day=tick_datetime.day,
             hour=11, minute=30, second=0, microsecond=0, tzinfo=tz)
 
-        pm_start_datetime = datetime(
+        pm_start_datetime = datetime.datetime(
             year=tick_datetime.year, month=tick_datetime.month, day=tick_datetime.day,
             hour=13, minute=0, second=0, microsecond=0, tzinfo=tz)
-        pm_end_datetime = datetime(
+        pm_end_datetime = datetime.datetime(
             year=tick_datetime.year, month=tick_datetime.month, day=tick_datetime.day,
             hour=15, minute=0, second=0, microsecond=0, tzinfo=tz)
 
@@ -185,7 +213,7 @@ class AcestockGateway(BaseGateway):
 
             await asyncio.sleep(1.5)
             # 这里注意要更新时间
-            tick_datetime = datetime.now(tz)
+            tick_datetime = datetime.datetime.now(tz)
 
     def send_order(self, req: OrderRequest) -> str:
         """委托下单"""
@@ -313,11 +341,11 @@ class AcestockGateway(BaseGateway):
                         size=1,
                         min_volume=row['volunit'],
                         product=Product.EQUITY,
-                        history_data=False,
+                        history_data=True,
                         gateway_name=self.gateway_name,
                     )
                     self.on_contract(contract)
-                    self.contracts_dict[contract.vt_symbol] = contract
+                    self.contracts_dict[Product.EQUITY][contract.vt_symbol] = contract
 
             for bond_df, exchange in zip([sh_bond_df, sz_bond_df], exchange_list):
                 for row in bond_df.iterrows():
@@ -330,11 +358,11 @@ class AcestockGateway(BaseGateway):
                         size=1,
                         min_volume=row['volunit'],
                         product=Product.BOND,
-                        history_data=False,
+                        history_data=True,
                         gateway_name=self.gateway_name,
                     )
                     self.on_contract(contract)
-                    self.contracts_dict[contract.vt_symbol] = contract
+                    self.contracts_dict[Product.BOND][contract.vt_symbol] = contract
 
             for etf_df, exchange in zip([sh_etf_df, sz_etf_df], exchange_list):
                 for row in etf_df.iterrows():
@@ -347,11 +375,98 @@ class AcestockGateway(BaseGateway):
                         size=1,
                         min_volume=row['volunit'],
                         product=Product.ETF,
-                        history_data=False,
+                        history_data=True,
                         gateway_name=self.gateway_name,
                     )
                     self.on_contract(contract)
-                    self.contracts_dict[contract.vt_symbol] = contract
-
+                    self.contracts_dict[Product.ETF][contract.vt_symbol] = contract
+            try:
+                save_pickle(self.save_contracts_json_file_name, self.contracts_dict)
+                self.write_log("本地保存合约信息成功!")
+            except:
+                self.write_log("本地保存合约信息失败!")
         except:
             self.write_log("jotdx 行情接口获取合约信息出错")
+
+    def query_history(self, req: HistoryRequest) -> List[BarData]:
+
+        history = []
+
+        offset = (datetime.datetime.now(tz=DB_TZ) - req.start).days
+        if req.interval == Interval.HOUR:
+            offset *= 4
+        elif req.interval == Interval.MINUTE:
+            offset *= (4 * 60)
+        elif req.interval == Interval.MINUTE_5:
+            offset *= (4 * 12)
+        elif req.interval == Interval.MINUTE_15:
+            offset *= (4 * 4)
+        elif req.interval == Interval.MINUTE_30:
+            offset *= (4 * 2)
+        elif req.interval == Interval.WEEKLY:
+            offset /= 5
+
+        offset_const = 800   # pytdx 单次查询数据数目最大上限
+        if offset > offset_const:
+            start = 0
+            df = self.md_api.bars(
+                symbol=req.symbol,
+                frequency=Interval_to_frequency_dict[req.interval],
+                offset=offset_const,
+                start=start
+            )
+            while offset > offset_const:
+                start += offset_const
+                offset -= offset_const
+                df = self.md_api.bars(
+                    symbol=req.symbol,
+                    frequency=Interval_to_frequency_dict[req.interval],
+                    offset=offset_const,
+                    start=start
+                ).append(df)
+
+            start += offset_const
+            df = self.md_api.bars(
+                symbol=req.symbol,
+                frequency=Interval_to_frequency_dict[req.interval],
+                offset=offset,
+                start=start
+            ).append(df)
+
+        else:
+            df = self.md_api.bars(
+                symbol=req.symbol,
+                frequency=Interval_to_frequency_dict[req.interval],
+                offset=int(offset)
+            )
+
+        # 因为 req 的 start 和 end datetime 是带tzinfo的, 所以这里将datetime列进行添加tzinfo处理
+        df['datetime'] = pd.to_datetime(df['datetime'])
+        df.set_index('datetime', inplace=True)
+        df = df.tz_localize(DB_TZ)
+        df.reset_index(inplace=True)
+
+        df = df[(df['datetime'] >= req.start) & (df['datetime'] <= req.end + datetime.timedelta(days=1))]
+        self.write_log(f"查询历史数据成功, {req.start} -> {req.end}, 共{len(df)}条数据, 开始转换数据...")
+
+        for _, series in df.iterrows():
+            history.append(
+                BarData(
+                    gateway_name=self.gateway_name,
+                    symbol=req.symbol,
+                    exchange=req.exchange,
+                    datetime=series['datetime'],
+                    interval=req.interval,
+                    volume=series['vol'],
+                    turnover=series['amount'],
+                    open_interest=0.0,
+                    open_price=series['open'],
+                    high_price=series['high'],
+                    low_price=series['low'],
+                    close_price=series['close']
+                )
+            )
+        # except:
+        #     self.write_log("获取历史数据失败!")
+
+        return history
