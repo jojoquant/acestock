@@ -14,14 +14,15 @@ if __name__ == '__main__':
     # df['datetime'] = pd.to_datetime(df['datetime'])
     # df.set_index('datetime', inplace=True)
     # df = df.tz_localize(DB_TZ)
+    acestock_gateway.connect_md_api()
 
     req = HistoryRequest(
         symbol="113027",
         exchange=Exchange.SSE,
-        start=datetime.datetime(year=2021,month=9,day=12,tzinfo=DB_TZ),
-        end=datetime.datetime(year=2021,month=11,day=1, tzinfo=DB_TZ),
+        start=datetime.datetime(year=2021, month=9, day=12, tzinfo=DB_TZ),
+        end=datetime.datetime(year=2021, month=11, day=1, tzinfo=DB_TZ),
         interval=Interval.MINUTE_5,
     )
-    acestock_gateway.query_history(req)
+    r = acestock_gateway.query_history(req)
 
     print(1)

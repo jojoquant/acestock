@@ -56,7 +56,7 @@ class AcestockGateway(BaseGateway):
         """构造函数"""
         super().__init__(event_engine, gateway_name)
 
-        self.md_api = Quotes.factory(market='std')
+        self.md_api = None
         self.md_api_subscribe_req_list = []
         self.md_thread: threading.Thread = None
         self.loop: AbstractEventLoop = None
@@ -80,6 +80,7 @@ class AcestockGateway(BaseGateway):
         self.connect_td_api(setting)
 
     def connect_md_api(self):
+        self.md_api = Quotes.factory(market='std', heartbeat=True, multithread=True)
         self.query_contract()
 
         try:
@@ -385,11 +386,10 @@ class AcestockGateway(BaseGateway):
                 self.write_log("本地保存合约信息成功!")
             except:
                 self.write_log("本地保存合约信息失败!")
-        except:
-            self.write_log("jotdx 行情接口获取合约信息出错")
+        except Exception as e:
+            self.write_log(f"jotdx 行情接口获取合约信息出错: {e}")
 
     def query_history(self, req: HistoryRequest) -> List[BarData]:
-
         history = []
 
         offset = (datetime.datetime.now(tz=DB_TZ) - req.start).days
@@ -432,7 +432,6 @@ class AcestockGateway(BaseGateway):
                 offset=offset,
                 start=start
             ).append(df)
-
         else:
             df = self.md_api.bars(
                 symbol=req.symbol,
