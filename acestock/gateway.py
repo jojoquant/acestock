@@ -80,7 +80,7 @@ class AcestockGateway(BaseGateway):
         self.connect_td_api(setting)
 
     def connect_md_api(self):
-        self.md_api = Quotes.factory(market='std', heartbeat=True, multithread=True)
+        self.md_api = Quotes.factory(market='std', bestip=True, heartbeat=True, multithread=True)
         self.query_contract()
 
         try:
