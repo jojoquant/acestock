@@ -407,37 +407,49 @@ class AcestockGateway(BaseGateway):
             offset /= 5
 
         offset_const = 800   # pytdx 单次查询数据数目最大上限
-        if offset > offset_const:
-            start = 0
-            df = self.md_api.bars(
-                symbol=req.symbol,
-                frequency=Interval_to_frequency_dict[req.interval],
-                offset=offset_const,
-                start=start
-            )
-            while offset > offset_const:
-                start += offset_const
-                offset -= offset_const
+        try:
+            if offset > offset_const:
+                start = 0
                 df = self.md_api.bars(
                     symbol=req.symbol,
                     frequency=Interval_to_frequency_dict[req.interval],
                     offset=offset_const,
                     start=start
-                ).append(df)
+                )
+                while offset > offset_const:
+                    start += offset_const
+                    offset -= offset_const
+                    offset_const_df = self.md_api.bars(
+                        symbol=req.symbol,
+                        frequency=Interval_to_frequency_dict[req.interval],
+                        offset=offset_const,
+                        start=start
+                    )
+                    df = offset_const_df.append(df)
+                    if len(offset_const_df) < offset_const:
+                        offset = 0
 
-            start += offset_const
-            df = self.md_api.bars(
-                symbol=req.symbol,
-                frequency=Interval_to_frequency_dict[req.interval],
-                offset=offset,
-                start=start
-            ).append(df)
-        else:
-            df = self.md_api.bars(
-                symbol=req.symbol,
-                frequency=Interval_to_frequency_dict[req.interval],
-                offset=int(offset)
-            )
+                if offset > 0:
+                    start += offset_const
+                    res_df = self.md_api.bars(
+                        symbol=req.symbol,
+                        frequency=Interval_to_frequency_dict[req.interval],
+                        offset=offset,
+                        start=start
+                    )
+                    if len(res_df) != 0:
+                        df = res_df.append(df)
+
+            else:
+                df = self.md_api.bars(
+                    symbol=req.symbol,
+                    frequency=Interval_to_frequency_dict[req.interval],
+                    offset=int(offset)
+                )
+        except Exception as e:
+            self.write_log(f"数据获取失败 {req}")
+            self.write_log(f"Exception : {e}")
+            return []
 
         # 因为 req 的 start 和 end datetime 是带tzinfo的, 所以这里将datetime列进行添加tzinfo处理
         df['datetime'] = pd.to_datetime(df['datetime'])
