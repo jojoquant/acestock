@@ -126,9 +126,11 @@ class AcestockGateway(BaseGateway):
         """关闭接口"""
         if self.td_api is not None:
             self.td_api.exit()
-        self.write_log("交易服务器断开连接")
-        self.md_api.close()
-        self.write_log("行情服务器断开连接")
+            self.write_log("交易服务器断开连接")
+
+        if self.md_api is not None:
+            self.md_api.close()
+            self.write_log("行情服务器断开连接")
 
     def subscribe(self, req: SubscribeRequest) -> None:
         """订阅行情"""
