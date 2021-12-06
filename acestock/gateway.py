@@ -453,6 +453,8 @@ class AcestockGateway(BaseGateway):
             self.write_log(f"Exception : {e}")
             return []
 
+        if df.empty:
+            return []
         # 因为 req 的 start 和 end datetime 是带tzinfo的, 所以这里将datetime列进行添加tzinfo处理
         df['datetime'] = pd.to_datetime(df['datetime'])
         df.set_index('datetime', inplace=True)
