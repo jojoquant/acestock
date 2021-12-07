@@ -15,10 +15,10 @@ from jotdx.consts import MARKET_SH, MARKET_SZ
 
 from vnpy.event import EventEngine
 from vnpy.trader.constant import Offset, Status, Exchange, Direction, Product, Interval
-from vnpy.trader.database import DB_TZ
+from vnpy.trader.database import DB_TZ, DATETIME_TZ
 from vnpy.trader.gateway import BaseGateway
 from vnpy.trader.object import SubscribeRequest, OrderRequest, CancelRequest, PositionData, AccountData, \
-    ContractData, TickData, HistoryRequest, BarData
+    ContractData, TickData, HistoryRequest, BarData, OrderData
 
 # 交易所映射
 from vnpy.trader.utility import save_pickle
@@ -401,21 +401,28 @@ class AcestockGateway(BaseGateway):
             self.write_log(f"jotdx 行情接口获取合约信息出错: {e}")
 
     def query_history(self, req: HistoryRequest) -> List[BarData]:
+
         history = []
 
-        offset = (datetime.datetime.now(tz=DB_TZ) - req.start).days
-        if req.interval == Interval.HOUR:
-            offset *= 4
-        elif req.interval == Interval.MINUTE:
-            offset *= (4 * 60)
+        if req.end is None:
+            offset = (datetime.datetime.now(tz=DATETIME_TZ) - req.start).seconds
+        else:
+            offset = (req.end - req.start).seconds
+
+        if req.interval == Interval.MINUTE:
+            offset = offset / 60
         elif req.interval == Interval.MINUTE_5:
-            offset *= (4 * 12)
+            offset = offset / 60 / 5
         elif req.interval == Interval.MINUTE_15:
-            offset *= (4 * 4)
+            offset = offset / 60 / 15
         elif req.interval == Interval.MINUTE_30:
-            offset *= (4 * 2)
+            offset = offset / 60 / 30
+        elif req.interval == Interval.HOUR:
+            offset = offset / 60 / 60
+        elif req.interval == Interval.DAILY:
+            offset = offset / 60 / 60 / 24
         elif req.interval == Interval.WEEKLY:
-            offset /= 5
+            offset = offset / 60 / 60 / 24 / 5
 
         offset_const = 800   # pytdx 单次查询数据数目最大上限
         try:
