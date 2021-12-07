@@ -405,9 +405,11 @@ class AcestockGateway(BaseGateway):
         history = []
 
         if req.end is None:
-            offset = (datetime.datetime.now(tz=DATETIME_TZ) - req.start).seconds
+            offset = datetime.datetime.now(tz=DATETIME_TZ) - req.start
+            offset = offset.days * 3600 * 24 + offset.seconds
         else:
-            offset = (req.end - req.start).seconds
+            offset = req.end - req.start
+            offset = offset.days * 3600 * 24 + offset.seconds
 
         if req.interval == Interval.MINUTE:
             offset = offset / 60
