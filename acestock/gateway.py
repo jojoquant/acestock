@@ -223,7 +223,7 @@ class AcestockGateway(BaseGateway):
         try:
             if req.offset == Offset.OPEN:
 
-                ret = self.td_api.buy(security=req.symbol, price=req.price, amount=req.volume)[0]
+                ret = self.td_api.buy(security=req.symbol, price=req.price, amount=req.volume)
                 order_id = ret.get('entrust_no', default="success")
 
                 order = req.create_order_data(order_id, self.gateway_name)
@@ -236,7 +236,7 @@ class AcestockGateway(BaseGateway):
 
             elif req.direction == Offset.CLOSE:
 
-                ret = self.td_api.sell(security=req.symbol, price=req.price, amount=req.volume)[0]
+                ret = self.td_api.sell(security=req.symbol, price=req.price, amount=req.volume)
                 order_id = ret.get('entrust_no', default="success")
 
                 order = req.create_order_data(order_id, self.gateway_name)

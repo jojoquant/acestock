@@ -3,10 +3,12 @@ import datetime
 import pandas as pd
 
 from jnpy.gateway.acestock.acestock.gateway import AcestockGateway
-from vnpy.trader.constant import Interval, Exchange
+from vnpy.trader.constant import Interval, Exchange, Direction, OrderType,Offset
 from vnpy.trader.database import DB_TZ
 from vnpy.trader.engine import EventEngine
-from vnpy.trader.object import HistoryRequest
+from vnpy.trader.object import HistoryRequest, OrderRequest
+from vnpy.trader.utility import load_json
+
 
 if __name__ == '__main__':
     acestock_gateway = AcestockGateway(EventEngine())
@@ -14,7 +16,9 @@ if __name__ == '__main__':
     # df['datetime'] = pd.to_datetime(df['datetime'])
     # df.set_index('datetime', inplace=True)
     # df = df.tz_localize(DB_TZ)
-    acestock_gateway.connect_md_api()
+
+    td_api_settings = load_json("connect_acestock.json")
+    acestock_gateway.connect(td_api_settings)
 
     req = HistoryRequest(
         symbol="113027",
@@ -25,4 +29,14 @@ if __name__ == '__main__':
     )
     r = acestock_gateway.query_history(req)
 
+    order = OrderRequest(
+        "113624",
+        Exchange.SSE,
+        Direction.SHORT,
+        OrderType.LIMIT,
+        volume=10,
+        price=110.0,
+        offset=Offset.CLOSE
+    )
+    acestock_gateway.send_order(order)
     print(1)
