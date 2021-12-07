@@ -24,8 +24,8 @@ from vnpy.trader.object import SubscribeRequest, OrderRequest, CancelRequest, Po
 from vnpy.trader.utility import save_pickle
 
 MARKET2VT: Dict[str, Exchange] = {
-    "深A": Exchange.SZSE,
-    "沪A": Exchange.SSE,
+    "深圳": Exchange.SZSE,
+    "上海": Exchange.SSE,
 }
 
 Interval_to_frequency_dict = {
@@ -73,6 +73,7 @@ class AcestockGateway(BaseGateway):
         self.ths_client_list = ['universal_client']
 
         self.orderid: int = 0
+        self.orders: Dict[str, OrderData] = {}
 
     def connect(self, setting: dict) -> None:
 
@@ -223,8 +224,8 @@ class AcestockGateway(BaseGateway):
         try:
             if req.offset == Offset.OPEN:
 
-                ret = self.td_api.buy(security=req.symbol, price=req.price, amount=req.volume)[0]
-                order_id = ret.get('entrust_no', default="success")
+                ret = self.td_api.buy(security=req.symbol, price=req.price, amount=req.volume)
+                order_id = ret.get('entrust_no', "success")
 
                 order = req.create_order_data(order_id, self.gateway_name)
                 order.status = Status.ALLTRADED
@@ -234,10 +235,10 @@ class AcestockGateway(BaseGateway):
                 if order_id == "success":
                     self.write_log("系统配置未设置为 返回成交回报, 将影响撤单操作")
 
-            elif req.direction == Offset.CLOSE:
+            elif req.offset == Offset.CLOSE:
 
-                ret = self.td_api.sell(security=req.symbol, price=req.price, amount=req.volume)[0]
-                order_id = ret.get('entrust_no', default="success")
+                ret = self.td_api.sell(security=req.symbol, price=req.price, amount=req.volume)
+                order_id = ret.get('entrust_no', "success")
 
                 order = req.create_order_data(order_id, self.gateway_name)
                 order.status = Status.ALLTRADED
@@ -290,6 +291,14 @@ class AcestockGateway(BaseGateway):
         try:
             ret_list = self.td_api.position
             for ret in ret_list:
+
+                trade_market_key = "交易市场"
+                if trade_market_key in ret:
+                    if ("沪" in ret[trade_market_key]) or ("上海" in ret[trade_market_key]):
+                        ret[trade_market_key] = "上海"
+                    elif ("深" in ret[trade_market_key]) or ("深圳" in ret[trade_market_key]):
+                        ret[trade_market_key] = "深圳"
+
                 if self.td_api_setting['broker'] in self.non_ths_client_list:
                     position = PositionData(
                         symbol=str(ret["证券代码"]),
@@ -451,6 +460,9 @@ class AcestockGateway(BaseGateway):
         except Exception as e:
             self.write_log(f"数据获取失败 {req}")
             self.write_log(f"Exception : {e}")
+            return []
+
+        if df.empty:
             return []
 
         # 因为 req 的 start 和 end datetime 是带tzinfo的, 所以这里将datetime列进行添加tzinfo处理
