@@ -198,26 +198,29 @@ class AcestockGateway(BaseGateway):
         tick = self.trans_tick_df_to_tick_data(last_tick_df, req)
         self.on_tick(tick)
 
-        while (am_start_datetime <= tick_datetime <= am_end_datetime) \
-                or (pm_start_datetime <= tick_datetime <= pm_end_datetime):
-            df1 = await loop.run_in_executor(None, partial(client.transaction, **params))
-            last_tick_df = last_tick_df.append(df1).drop_duplicates()
-            if len(last_tick_df) != 1:
-                last_tick_df = df1
-                tick = self.trans_tick_df_to_tick_data(last_tick_df, req)
-                self.on_tick(tick)
-            await asyncio.sleep(1.5)
+        while True:
+            if (am_start_datetime <= tick_datetime <= am_end_datetime) \
+                    or (pm_start_datetime <= tick_datetime <= pm_end_datetime):
+                df1 = await loop.run_in_executor(None, partial(client.transaction, **params))
+                last_tick_df = last_tick_df.append(df1).drop_duplicates()
+                if len(last_tick_df) != 1:
+                    last_tick_df = df1
+                    tick = self.trans_tick_df_to_tick_data(last_tick_df, req)
+                    self.on_tick(tick)
+                await asyncio.sleep(1.5)
 
-            df2 = await loop.run_in_executor(None, partial(client.transaction, **params))
-            last_tick_df = last_tick_df.append(df2).drop_duplicates()
-            if len(last_tick_df) != 1:
-                last_tick_df = df2
-                tick = self.trans_tick_df_to_tick_data(last_tick_df, req)
-                self.on_tick(tick)
+                df2 = await loop.run_in_executor(None, partial(client.transaction, **params))
+                last_tick_df = last_tick_df.append(df2).drop_duplicates()
+                if len(last_tick_df) != 1:
+                    last_tick_df = df2
+                    tick = self.trans_tick_df_to_tick_data(last_tick_df, req)
+                    self.on_tick(tick)
 
-            await asyncio.sleep(1.5)
-            # 这里注意要更新时间
-            tick_datetime = datetime.datetime.now(tz)
+                await asyncio.sleep(1.5)
+                # 这里注意要更新时间
+                tick_datetime = datetime.datetime.now(tz)
+            else:
+                await asyncio.sleep(3)
 
     def send_order(self, req: OrderRequest) -> str:
         """委托下单"""
@@ -426,7 +429,7 @@ class AcestockGateway(BaseGateway):
         elif req.interval == Interval.WEEKLY:
             offset = offset / 60 / 60 / 24 / 5
 
-        offset_const = 800   # pytdx 单次查询数据数目最大上限
+        offset_const = 800  # pytdx 单次查询数据数目最大上限
         try:
             if offset > offset_const:
                 start = 0
