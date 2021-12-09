@@ -21,7 +21,7 @@ from vnpy.trader.object import SubscribeRequest, OrderRequest, CancelRequest, Po
     ContractData, TickData, HistoryRequest, BarData, OrderData
 
 # 交易所映射
-from vnpy.trader.utility import save_pickle
+from vnpy.trader.utility import save_pickle, get_file_path, load_pickle
 
 MARKET2VT: Dict[str, Exchange] = {
     "深圳": Exchange.SZSE,
@@ -65,7 +65,7 @@ class AcestockGateway(BaseGateway):
             Product.BOND: dict(),
             Product.ETF: dict(),
         }
-        self.save_contracts_json_file_name = f"{gateway_name}_contracts.pkl"
+        self.save_contracts_pkl_file_name = f"{gateway_name}_contracts.pkl"
 
         self.td_api = None
         self.td_api_setting = {}
@@ -89,16 +89,18 @@ class AcestockGateway(BaseGateway):
             self.md_thread = threading.Thread(target=self.start_loop, args=(self.loop,))  # 通过当前线程开启新的线程去启动事件循环
             self.write_log("启动行情线程...")
             self.md_thread.start()
-        except:
+        except BaseException as err:
             self.write_log("行情线程启动出现问题!")
+            self.write_log(err)
 
     def start_loop(self, loop):
         asyncio.set_event_loop(loop)
         try:
             self.write_log("行情线程中启动协程 loop ...")
             loop.run_forever()
-        except:
+        except BaseException as err:
             self.write_log("行情线程中启动协程 loop 出现问题!")
+            self.write_log(err)
 
     def connect_td_api(self, setting):
         self.td_api_setting = setting
@@ -253,7 +255,7 @@ class AcestockGateway(BaseGateway):
 
         except IOError as e:
             order.status = Status.REJECTED
-            self.on_order(order)
+            self.on_order(copy(order))
 
             msg: str = f"开仓委托失败，信息：{e}"
             self.write_log(msg)
@@ -286,8 +288,10 @@ class AcestockGateway(BaseGateway):
                 )
             self.on_account(account)
             self.write_log("账户资金查询成功")
-        except:
+
+        except BaseException as err:
             self.write_log("账户资金查询失败")
+            self.write_log(err)
 
     def query_position(self) -> None:
         """查询持仓"""
@@ -328,10 +332,23 @@ class AcestockGateway(BaseGateway):
                     )
                 self.on_position(position)
             self.write_log("账户持仓查询成功")
-        except:
+        except BaseException as err:
             self.write_log("账户持仓查询失败")
+            self.write_log(err)
 
     def query_contract(self) -> None:
+        contract_pkl_file_path = get_file_path(self.save_contracts_pkl_file_name)
+
+        if contract_pkl_file_path.exists():
+            # 判断文件更新日期, 如果当前日期 == 更新日期, 原则上每天只更新一次
+            # 读取本地缓存文件
+            update_date = datetime.datetime.fromtimestamp(
+                contract_pkl_file_path.stat().st_mtime).date()
+            if update_date == datetime.date.today():
+                self.write_log("行情接口开始加载本地合约信息 ...")
+                self.contracts_dict = load_pickle(self.save_contracts_pkl_file_name)
+                return
+
         try:
             self.write_log("行情接口开始获取合约信息 ...")
             sh_df = self.md_api.stocks(market=MARKET_SH)
@@ -396,10 +413,12 @@ class AcestockGateway(BaseGateway):
                     self.on_contract(contract)
                     self.contracts_dict[Product.ETF][contract.vt_symbol] = contract
             try:
-                save_pickle(self.save_contracts_json_file_name, self.contracts_dict)
+                save_pickle(self.save_contracts_pkl_file_name, self.contracts_dict)
                 self.write_log("本地保存合约信息成功!")
-            except:
+            except BaseException as err:
                 self.write_log("本地保存合约信息失败!")
+                self.write_log(err)
+
         except Exception as e:
             self.write_log(f"jotdx 行情接口获取合约信息出错: {e}")
 
@@ -503,7 +522,5 @@ class AcestockGateway(BaseGateway):
                     close_price=series['close']
                 )
             )
-        # except:
-        #     self.write_log("获取历史数据失败!")
 
         return history
