@@ -235,10 +235,7 @@ class AcestockGateway(BaseGateway):
                 order = req.create_order_data(order_id, self.gateway_name)
                 order.status = Status.ALLTRADED
                 self.orders[order_id] = order
-                self.gateway.on_order(copy(order))
-
-                if order_id == "success":
-                    self.write_log("系统配置未设置为 返回成交回报, 将影响撤单操作")
+                self.on_order(copy(order))
 
             elif req.offset == Offset.CLOSE:
 
@@ -250,8 +247,8 @@ class AcestockGateway(BaseGateway):
                 self.orders[order_id] = order
                 self.on_order(copy(order))
 
-                if order_id == "success":
-                    self.write_log("系统配置未设置为 返回成交回报, 将影响撤单操作")
+            if order_id == "success":
+                self.write_log("系统配置未设置为 返回成交回报, 将影响撤单操作")
 
         except IOError as e:
             order.status = Status.REJECTED
