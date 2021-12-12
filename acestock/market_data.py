@@ -11,9 +11,9 @@ from typing import List
 from jotdx.consts import MARKET_SH, MARKET_SZ
 from jotdx.quotes import Quotes
 
+from vnpy.trader.gateway import BaseGateway
 from vnpy.trader.database import DATETIME_TZ
 from vnpy.trader.object import ContractData, HistoryRequest, BarData, SubscribeRequest, TickData
-from .gateway import AcestockGateway
 from vnpy.trader.constant import Product, Exchange, Interval
 from vnpy.trader.utility import get_file_path, load_pickle, save_pickle
 
@@ -30,7 +30,7 @@ Interval_to_frequency_dict = {
 
 class MarketData:
 
-    def __init__(self, gateway: AcestockGateway):
+    def __init__(self, gateway: BaseGateway):
         self.gateway = gateway
         self.api = None
         self.api_subscribe_req_list = []
@@ -161,6 +161,7 @@ class MarketData:
             if update_date == datetime.date.today():
                 self.gateway.write_log("行情接口开始加载本地合约信息 ...")
                 self.contracts_dict = load_pickle(self.save_contracts_pkl_file_name)
+                [[self.gateway.on_contract(contract) for contract in v.values()] for v in self.contracts_dict.values()]
                 return
 
         try:

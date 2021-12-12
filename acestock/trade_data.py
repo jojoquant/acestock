@@ -8,10 +8,10 @@ from typing import Dict
 
 from easytrader import remoteclient
 
+from vnpy.trader.gateway import BaseGateway
 from vnpy.trader.constant import Exchange, Direction, Offset, Status
 from vnpy.trader.database import DATETIME_TZ
 from vnpy.trader.object import AccountData, PositionData, CancelRequest, OrderRequest, OrderData, TradeData
-from .gateway import AcestockGateway
 
 MARKET2VT: Dict[str, Exchange] = {
     "深圳": Exchange.SZSE,
@@ -21,7 +21,7 @@ MARKET2VT: Dict[str, Exchange] = {
 
 class TradeData:
 
-    def __init__(self, gateway: AcestockGateway):
+    def __init__(self, gateway: BaseGateway):
         self.gateway = gateway
         self.api = None
         self.api_setting = {}
@@ -74,7 +74,7 @@ class TradeData:
             self.loop = asyncio.new_event_loop()  # 在当前线程下创建时间循环，（未启用），在start_loop里面启动它
             self.thread = threading.Thread(target=self.start_loop, args=(self.loop,))  # 通过当前线程开启新的线程去启动事件循环
             self.gateway.write_log("启动交易线程...")
-            self.gateway.td_thread.start()
+            self.thread.start()
         except BaseException as err:
             self.gateway.write_log("交易线程启动出现问题!")
             self.gateway.write_log(err)
