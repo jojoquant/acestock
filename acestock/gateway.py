@@ -22,7 +22,7 @@ class AcestockGateway(BaseGateway):
         "comm_password": "",
         "host": "",
         "port": "1430",
-        "update_bestip": False,
+        "update_bestip": "",
     }
     exchanges: List[Exchange] = [Exchange.SSE, Exchange.SZSE]
 
@@ -36,7 +36,14 @@ class AcestockGateway(BaseGateway):
         self.orders: Dict[str, OrderData] = {}
 
     def connect(self, setting: dict) -> None:
-        self.md.connect(setting['update_bestip'])
+        if setting['update_bestip'] == "y":
+            bestip = True
+            self.write_log("即将遍历更新行情数据 bestip")
+        else:
+            bestip = False
+            self.write_log("使用本地已记录的行情数据 bestip")
+        
+        self.md.connect(bestip)
         self.td.connect(setting)
 
     def close(self) -> None:
