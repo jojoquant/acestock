@@ -21,7 +21,8 @@ class AcestockGateway(BaseGateway):
         "exe_path": "",
         "comm_password": "",
         "host": "",
-        "port": "1430"
+        "port": "1430",
+        "update_bestip": False,
     }
     exchanges: List[Exchange] = [Exchange.SSE, Exchange.SZSE]
 
@@ -35,7 +36,7 @@ class AcestockGateway(BaseGateway):
         self.orders: Dict[str, OrderData] = {}
 
     def connect(self, setting: dict) -> None:
-        self.md.connect()
+        self.md.connect(setting['update_bestip'])
         self.td.connect(setting)
 
     def close(self) -> None:

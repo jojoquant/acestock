@@ -55,8 +55,8 @@ class MarketData:
             self.gateway.write_log("行情线程中启动协程 loop 出现问题!")
             self.gateway.write_log(err)
 
-    def connect(self):
-        self.api = Quotes.factory(market='std', bestip=True, heartbeat=True, multithread=True)
+    def connect(self, bestip: bool):
+        self.api = Quotes.factory(market='std', bestip=bestip, heartbeat=True, multithread=True)
         self.query_contract()
 
         try:
