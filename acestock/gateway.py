@@ -7,7 +7,6 @@ from functools import partial
 from typing import Dict, Any, List
 
 import pandas as pd
-from tzlocal import get_localzone
 
 from easytrader import remoteclient
 from jotdx.quotes import Quotes
@@ -18,7 +17,7 @@ from vnpy.trader.constant import Offset, Status, Exchange, Direction, Product, I
 from vnpy.trader.database import DB_TZ, DATETIME_TZ
 from vnpy.trader.gateway import BaseGateway
 from vnpy.trader.object import SubscribeRequest, OrderRequest, CancelRequest, PositionData, AccountData, \
-    ContractData, TickData, HistoryRequest, BarData, OrderData
+    ContractData, TickData, HistoryRequest, BarData, OrderData, TradeData
 
 # 交易所映射
 from vnpy.trader.utility import save_pickle, get_file_path, load_pickle
@@ -59,7 +58,7 @@ class AcestockGateway(BaseGateway):
         self.md_api = None
         self.md_api_subscribe_req_list = []
         self.md_thread: threading.Thread = None
-        self.loop: AbstractEventLoop = None
+        self.md_loop: AbstractEventLoop = None
         self.contracts_dict = {
             Product.EQUITY: dict(),
             Product.BOND: dict(),
@@ -69,11 +68,15 @@ class AcestockGateway(BaseGateway):
 
         self.td_api = None
         self.td_api_setting = {}
+        self.td_thread: threading.Thread = None
+        self.td_loop: AbstractEventLoop = None
         self.non_ths_client_list = ['htzq_client', 'ht_client', "gj_client"]
         self.ths_client_list = ['universal_client']
 
         self.orderid: int = 0
         self.orders: Dict[str, OrderData] = {}
+
+        self.datetime_format = "%Y-%m-%d %H:%M:%S"
 
     def connect(self, setting: dict) -> None:
 
@@ -85,21 +88,38 @@ class AcestockGateway(BaseGateway):
         self.query_contract()
 
         try:
-            self.loop = asyncio.new_event_loop()  # 在当前线程下创建时间循环，（未启用），在start_loop里面启动它
-            self.md_thread = threading.Thread(target=self.start_loop, args=(self.loop,))  # 通过当前线程开启新的线程去启动事件循环
+            self.md_loop = asyncio.new_event_loop()  # 在当前线程下创建时间循环，（未启用），在start_md_loop里面启动它
+            self.md_thread = threading.Thread(target=self.start_md_loop, args=(self.md_loop,))  # 通过当前线程开启新的线程去启动事件循环
             self.write_log("启动行情线程...")
             self.md_thread.start()
         except BaseException as err:
             self.write_log("行情线程启动出现问题!")
             self.write_log(err)
 
-    def start_loop(self, loop):
+    def start_md_loop(self, loop):
+        """
+        轮询, 使用jotdx查询3s变化的 price 和 vol 信息, 生成缺少bid和ask的tick
+        """
         asyncio.set_event_loop(loop)
         try:
             self.write_log("行情线程中启动协程 loop ...")
             loop.run_forever()
         except BaseException as err:
             self.write_log("行情线程中启动协程 loop 出现问题!")
+            self.write_log(err)
+
+    def start_td_loop(self, loop):
+        """
+        轮询
+        使用easytrader查询1s ?? 变化的 当日成交 信息, 用于on_trade, 更新策略中的pos信息
+        easytrader 还可以查询当日委托, 可以对比出 未成交单
+        """
+        asyncio.set_event_loop(loop)
+        try:
+            self.write_log("交易线程中启动协程 loop ...")
+            loop.run_forever()
+        except BaseException as err:
+            self.write_log("交易线程中启动协程 loop 出现问题!")
             self.write_log(err)
 
     def connect_td_api(self, setting):
@@ -125,6 +145,15 @@ class AcestockGateway(BaseGateway):
         except Exception as e:
             self.write_log(f"交易服务器连接失败! {e}")
 
+        try:
+            self.td_loop = asyncio.new_event_loop()  # 在当前线程下创建时间循环，（未启用），在start_td_loop里面启动它
+            self.td_thread = threading.Thread(target=self.start_td_loop, args=(self.td_loop,))  # 通过当前线程开启新的线程去启动事件循环
+            self.write_log("启动交易线程...")
+            self.td_thread.start()
+        except BaseException as err:
+            self.write_log("交易线程启动出现问题!")
+            self.write_log(err)
+
     def close(self) -> None:
         """关闭接口"""
         if self.td_api is not None:
@@ -140,7 +169,7 @@ class AcestockGateway(BaseGateway):
         if req not in self.md_api_subscribe_req_list:
             self.md_api_subscribe_req_list.append(req.symbol)
             coroutine = self.query_tick(req)
-            asyncio.run_coroutine_threadsafe(coroutine, self.loop)
+            asyncio.run_coroutine_threadsafe(coroutine, self.md_loop)
 
     def trans_tick_df_to_tick_data(self, tick_df, req: SubscribeRequest) -> TickData:
         # buyorsell, 0 buy, 1 sell
@@ -164,7 +193,7 @@ class AcestockGateway(BaseGateway):
             name=name,
             symbol=req.symbol,
             exchange=req.exchange,
-            datetime=datetime.datetime.now(get_localzone()),
+            datetime=datetime.datetime.now(DATETIME_TZ),
             volume=tick_df['vol'][0],
             # num 放到turnover, 因为在bargenerater里面,
             # turnover是累加计算的, open_interest 是不算累加的而取截面的
@@ -180,7 +209,7 @@ class AcestockGateway(BaseGateway):
         params = {"symbol": req.symbol, "start": 0, "offset": 1}
         last_tick_df = await loop.run_in_executor(None, partial(client.transaction, **params))
 
-        tz = get_localzone()
+        tz = DATETIME_TZ
         tick_datetime = datetime.datetime.now(tz)
 
         am_start_datetime = datetime.datetime(
@@ -233,7 +262,7 @@ class AcestockGateway(BaseGateway):
                 order_id = ret.get('entrust_no', "success")
 
                 order = req.create_order_data(order_id, self.gateway_name)
-                order.status = Status.ALLTRADED
+                order.status = Status.SUBMITTING
                 self.orders[order_id] = order
                 self.on_order(copy(order))
 
@@ -243,12 +272,13 @@ class AcestockGateway(BaseGateway):
                 order_id = ret.get('entrust_no', "success")
 
                 order = req.create_order_data(order_id, self.gateway_name)
-                order.status = Status.ALLTRADED
+                order.status = Status.SUBMITTING
                 self.orders[order_id] = order
                 self.on_order(copy(order))
 
             if order_id == "success":
                 self.write_log("系统配置未设置为 返回成交回报, 将影响撤单操作")
+                return
 
         except IOError as e:
             order.status = Status.REJECTED
@@ -258,12 +288,53 @@ class AcestockGateway(BaseGateway):
             self.write_log(msg)
 
         finally:
+            # check today trades
+            trade = self.get_order_traded_data(order)
+            if trade is not None:
+                self.on_trade(copy(trade))
+                order.status = Status.ALLTRADED
+                self.orders[order_id] = order
+                self.on_order(copy(order))
+
             return order.vt_orderid
+
+    def get_order_traded_data(self, order: OrderData) -> TradeData:
+        for trade in self.td_api.today_trades:
+            trade_datetime = datetime.datetime.strptime(
+                f"{datetime.datetime.now(DATETIME_TZ).date()} {trade['成交时间']}",
+                self.datetime_format
+            ).replace(tzinfo=DATETIME_TZ)
+
+            if order.orderid == trade['合同编号']:
+                trade = TradeData(
+                    symbol=order.symbol,
+                    exchange=order.exchange,
+                    orderid=order.orderid,
+                    tradeid=trade['成交编号'],
+                    direction=order.direction,
+                    offset=order.offset,
+                    price=float(trade['成交均价']),
+                    volume=float(trade['成交数量']),
+                    datetime=trade_datetime,
+                    gateway_name=order.gateway_name,
+                )
+                return trade
+            else:
+                return None
+        return None
 
     def cancel_order(self, req: CancelRequest) -> None:
         """委托撤单"""
-        # TODO
-        self.td_api.cancel_entrust(req.orderid)
+        # check today order
+        for order in self.td_api.today_entrusts:
+            if order['合同编号'] == req.orderid and order['委托状态'] == "未成交":
+                r = self.td_api.cancel_entrust(req.orderid)
+                if "成功" in r.get('message', ''):
+                    self.write_log(r['message'])
+                else:
+                    self.write_log(f"[{req.orderid}]撤单失败")
+            else:
+                self.write_log(f"[{req.orderid}]不满足撤单条件, 无法撤单")
 
     def query_account(self) -> None:
         """查询资金"""
