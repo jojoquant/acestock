@@ -28,15 +28,16 @@ if __name__ == '__main__':
     td_api_settings = load_json("connect_acestock.json")
     acestock_gateway.connect(td_api_settings)
 
-    # req = HistoryRequest(
-    #     symbol="113027",
-    #     exchange=Exchange.SSE,
-    #     start=datetime.datetime(year=2021, month=9, day=12, tzinfo=DB_TZ),
-    #     end=datetime.datetime(year=2021, month=11, day=1, tzinfo=DB_TZ),
-    #     interval=Interval.MINUTE_5,
-    # )
-    # r = acestock_gateway.query_history(req)
-    #
+    req = HistoryRequest(
+        symbol="113027",
+        exchange=Exchange.SSE,
+        start=datetime.datetime(year=2021, month=9, day=12, tzinfo=DB_TZ),
+        end=datetime.datetime(year=2021, month=11, day=1, tzinfo=DB_TZ),
+        interval=Interval.MINUTE_5,
+    )
+    r = acestock_gateway.query_history(req)
+    print(1)
+
     # order = OrderRequest(
     #     "113624",
     #     Exchange.SSE,

@@ -14,7 +14,7 @@ from jotdx.consts import MARKET_SH, MARKET_SZ
 
 from vnpy.event import EventEngine
 from vnpy.trader.constant import Offset, Status, Exchange, Direction, Product, Interval
-from vnpy.trader.database import DB_TZ, DATETIME_TZ
+from vnpy.trader.database import DATETIME_TZ
 from vnpy.trader.gateway import BaseGateway
 from vnpy.trader.object import SubscribeRequest, OrderRequest, CancelRequest, PositionData, AccountData, \
     ContractData, TickData, HistoryRequest, BarData, OrderData, TradeData
@@ -567,7 +567,7 @@ class AcestockGateway(BaseGateway):
         # 因为 req 的 start 和 end datetime 是带tzinfo的, 所以这里将datetime列进行添加tzinfo处理
         df['datetime'] = pd.to_datetime(df['datetime'])
         df.set_index('datetime', inplace=True)
-        df = df.tz_localize(DB_TZ)
+        df = df.tz_localize(DATETIME_TZ)
         df.reset_index(inplace=True)
 
         df = df[(df['datetime'] >= req.start) & (df['datetime'] <= req.end + datetime.timedelta(days=1))]
