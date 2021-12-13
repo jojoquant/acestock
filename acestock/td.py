@@ -237,8 +237,7 @@ class TradeDataTD:
                     gateway_name=self.gateway.gateway_name,
                 )
                 return trade
-            else:
-                return None
+
         return None
 
     def cancel_order(self, req: CancelRequest) -> None:

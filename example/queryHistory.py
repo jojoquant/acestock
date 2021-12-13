@@ -38,21 +38,22 @@ if __name__ == '__main__':
     r = acestock_gateway.query_history(req)
     print(1)
 
-    # order = OrderRequest(
-    #     "113624",
-    #     Exchange.SSE,
-    #     Direction.SHORT,
-    #     OrderType.LIMIT,
-    #     volume=10,
-    #     price=110.0,
-    #     offset=Offset.CLOSE
-    # )
+    order = OrderRequest(
+        "128035",
+        Exchange.SZSE,
+        Direction.LONG,
+        OrderType.LIMIT,
+        volume=10,
+        price=101.0,
+        offset=Offset.OPEN
+    )
     # acestock_gateway.send_order(order)
 
     for i in range(1):
-        r1 = acestock_gateway.td_api.today_trades
+        r1 = acestock_gateway.td.api.today_trades
         print(r1)
-        r2 = acestock_gateway.td_api.today_entrusts
+        r2 = acestock_gateway.td.api.today_entrusts
+        acestock_gateway.td.send_order(order)
         print(r2)
         # time.sleep(1.5)
 
