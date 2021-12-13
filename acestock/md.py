@@ -148,6 +148,7 @@ class MarketDataMD:
                 # 这里注意要更新时间
                 tick_datetime = datetime.datetime.now(tz)
             else:
+                _ = await loop.run_in_executor(None, partial(client.transaction, **params))
                 await asyncio.sleep(3)
 
     def query_contract(self) -> None:
