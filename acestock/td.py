@@ -19,7 +19,7 @@ MARKET2VT: Dict[str, Exchange] = {
 }
 
 
-class TradeData:
+class TradeDataTD:
 
     def __init__(self, gateway: BaseGateway):
         self.gateway = gateway
@@ -234,7 +234,7 @@ class TradeData:
                     price=float(trade['成交均价']),
                     volume=float(trade['成交数量']),
                     datetime=trade_datetime,
-                    gateway_name=order.gateway_name,
+                    gateway_name=self.gateway.gateway_name,
                 )
                 return trade
             else:

@@ -28,7 +28,7 @@ Interval_to_frequency_dict = {
 }
 
 
-class MarketData:
+class MarketDataMD:
 
     def __init__(self, gateway: BaseGateway):
         self.gateway = gateway

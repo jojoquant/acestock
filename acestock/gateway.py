@@ -8,8 +8,8 @@ from vnpy.trader.object import (
     SubscribeRequest, OrderRequest, CancelRequest, OrderData, HistoryRequest, BarData
 )
 
-from .market_data import MarketData
-from .trade_data import TradeData
+from .md import MarketDataMD
+from .td import TradeDataTD
 
 
 class AcestockGateway(BaseGateway):
@@ -30,8 +30,8 @@ class AcestockGateway(BaseGateway):
         """构造函数"""
         super().__init__(event_engine, gateway_name)
 
-        self.md = MarketData(self)
-        self.td = TradeData(self)
+        self.md = MarketDataMD(self)
+        self.td = TradeDataTD(self)
 
         self.orders: Dict[str, OrderData] = {}
 
