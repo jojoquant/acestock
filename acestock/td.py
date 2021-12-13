@@ -196,8 +196,8 @@ class TradeDataTD:
                 self.gateway.write_log("系统配置未设置为 返回成交回报, 将影响撤单操作")
                 return None
 
-        except IOError as e:
-            order_id = "" if order_id is None else order_id
+        except BaseException as e:
+            order_id = "xxxxxx" if order_id is None else order_id
             order = req.create_order_data(order_id, self.gateway.gateway_name)
             order.status = Status.REJECTED
             self.gateway.on_order(copy(order))
@@ -219,7 +219,7 @@ class TradeDataTD:
     def get_order_traded_data(self, order: OrderData) -> TradeData:
         for trade in self.api.today_trades:
             trade_datetime = datetime.datetime.strptime(
-                f"{datetime.datetime.now(DATETIME_TZ).date()} {trade['成交时间']}",
+                f"{datetime.datetime.now(DATETIME_TZ).date()} {trade['成交时间'] if trade['成交时间'] else '00:00:00'}",
                 self.datetime_format
             ).replace(tzinfo=DATETIME_TZ)
 
@@ -251,7 +251,9 @@ class TradeDataTD:
                 else:
                     self.gateway.write_log(f"[{req.orderid}]撤单失败")
             else:
-                self.gateway.write_log(f"[{req.orderid}]不满足撤单条件, 无法撤单")
+                self.gateway.write_log(
+                    f"[{req.orderid}]不满足撤单条件无法撤单 或 未在交易委托系统中生成订单无需撤单"
+                )
 
     def close(self):
         if self.api is not None:
