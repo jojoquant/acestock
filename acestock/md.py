@@ -151,6 +151,11 @@ class MarketDataMD:
                 _ = await loop.run_in_executor(None, partial(client.transaction, **params))
                 await asyncio.sleep(3)
 
+    def drop_unused_bond_df_row(self, df, unused_symbol_list):
+        if unused_symbol_list:
+            return df[~df['code'].isin(unused_symbol_list)]
+        return df
+
     def query_contract(self) -> None:
         contract_pkl_file_path = get_file_path(self.save_contracts_pkl_file_name)
 
@@ -176,6 +181,14 @@ class MarketDataMD:
             sz_stock_df = sz_df[sz_df['code'].str.contains("^((002|000|300)[\d]{3})$")]
             sz_bond_df = sz_df[sz_df['code'].str.contains("^((127|128|123)[\d]{3})$")]
             sz_etf_df = sz_df[sz_df['code'].str.contains("^(15)[\d]{4}$")]
+
+            sh_bond_df = self.drop_unused_bond_df_row(
+                sh_bond_df,
+                ["110801", "110802", "110804", "110807", "110808",
+                 "110810", "110811", "110812", "110813",
+                 "113633", "113634", "113635", "113636"]
+            )
+            # sz_bond_df = self.drop_unused_bond_df_row(sz_bond_df, ["110801", "110802"])
 
             exchange_list = [Exchange.SSE, Exchange.SZSE]
             for stock_df, exchange in zip([sh_stock_df, sz_stock_df], exchange_list):
