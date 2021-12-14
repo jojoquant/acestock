@@ -174,7 +174,7 @@ class TradeDataTD:
         try:
             if req.offset == Offset.OPEN:
 
-                ret = self.api.buy(security=req.symbol, price=req.price, amount=req.volume)
+                ret = self.api.buy(security=req.symbol, price=round(req.price, 2), amount=req.volume)
                 order_id = ret.get('entrust_no', "success")
 
                 order = req.create_order_data(order_id, self.gateway.gateway_name)
@@ -184,7 +184,7 @@ class TradeDataTD:
 
             elif req.offset == Offset.CLOSE:
 
-                ret = self.api.sell(security=req.symbol, price=req.price, amount=req.volume)
+                ret = self.api.sell(security=req.symbol, price=round(req.price, 2), amount=req.volume)
                 order_id = ret.get('entrust_no', "success")
 
                 order = req.create_order_data(order_id, self.gateway.gateway_name)
