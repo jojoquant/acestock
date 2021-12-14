@@ -217,28 +217,33 @@ class TradeDataTD:
             return order.vt_orderid
 
     def get_order_traded_data(self, order: OrderData) -> TradeData:
-        for trade in self.api.today_trades:
-            trade_datetime = datetime.datetime.strptime(
-                f"{datetime.datetime.now(DATETIME_TZ).date()} {trade['成交时间'] if trade['成交时间'] else '00:00:00'}",
-                self.datetime_format
-            ).replace(tzinfo=DATETIME_TZ)
+        try:
+            for trade in self.api.today_trades:
+                trade_datetime = datetime.datetime.strptime(
+                    f"{datetime.datetime.now(DATETIME_TZ).date()} {trade['成交时间'] if trade['成交时间'] else '00:00:00'}",
+                    self.datetime_format
+                ).replace(tzinfo=DATETIME_TZ)
 
-            if order.orderid == trade['合同编号']:
-                trade = TradeData(
-                    symbol=order.symbol,
-                    exchange=order.exchange,
-                    orderid=order.orderid,
-                    tradeid=trade['成交编号'],
-                    direction=order.direction,
-                    offset=order.offset,
-                    price=float(trade['成交均价']),
-                    volume=float(trade['成交数量']),
-                    datetime=trade_datetime,
-                    gateway_name=self.gateway.gateway_name,
-                )
-                return trade
+                if order.orderid == trade['合同编号']:
+                    trade = TradeData(
+                        symbol=order.symbol,
+                        exchange=order.exchange,
+                        orderid=order.orderid,
+                        tradeid=trade['成交编号'],
+                        direction=order.direction,
+                        offset=order.offset,
+                        price=float(trade['成交均价']),
+                        volume=float(trade['成交数量']),
+                        datetime=trade_datetime,
+                        gateway_name=self.gateway.gateway_name,
+                    )
+                    return trade
 
-        return None
+        except BaseException as e:
+            self.gateway.write_log(f"获取订单成交数据出错: {e}")
+
+        finally:
+            return None
 
     def cancel_order(self, req: CancelRequest) -> None:
         """委托撤单"""

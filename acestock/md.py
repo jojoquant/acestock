@@ -148,9 +148,13 @@ class MarketDataMD:
                 # 这里注意要更新时间
                 tick_datetime = datetime.datetime.now(tz)
             else:
+                # 起到 heartbeat 的作用
                 _ = await loop.run_in_executor(None, partial(client.transaction, **params))
-                await asyncio.sleep(3)
 
+                await asyncio.sleep(3)
+                tick_datetime = datetime.datetime.now(tz)
+
+    @staticmethod
     def drop_unused_bond_df_row(self, df, unused_symbol_list):
         if unused_symbol_list:
             return df[~df['code'].isin(unused_symbol_list)]
