@@ -155,7 +155,7 @@ class MarketDataMD:
                 tick_datetime = datetime.datetime.now(tz)
 
     @staticmethod
-    def drop_unused_bond_df_row(self, df, unused_symbol_list):
+    def drop_unused_bond_df_row(df, unused_symbol_list):
         if unused_symbol_list:
             return df[~df['code'].isin(unused_symbol_list)]
         return df
