@@ -238,11 +238,10 @@ class TradeDataTD:
                         gateway_name=self.gateway.gateway_name,
                     )
                     return trade
+            return None
 
         except BaseException as e:
             self.gateway.write_log(f"获取订单成交数据出错: {e}")
-
-        finally:
             return None
 
     def cancel_order(self, req: CancelRequest) -> None:
