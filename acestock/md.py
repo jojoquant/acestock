@@ -123,8 +123,9 @@ class MarketDataMD:
             year=tick_datetime.year, month=tick_datetime.month, day=tick_datetime.day,
             hour=15, minute=0, second=0, microsecond=0, tzinfo=tz)
 
-        tick = self.trans_tick_df_to_tick_data(last_tick_df, req)
-        self.gateway.on_tick(tick)
+        if not last_tick_df.empty:
+            tick = self.trans_tick_df_to_tick_data(last_tick_df, req)
+            self.gateway.on_tick(tick)
 
         while True:
             if (am_start_datetime <= tick_datetime <= am_end_datetime) \
@@ -261,10 +262,10 @@ class MarketDataMD:
 
         if req.end is None:
             offset = datetime.datetime.now(tz=DATETIME_TZ) - req.start
-            offset = offset.days * 3600 * 24 + offset.seconds
+            offset = offset.days * 3600 * 4 + offset.seconds  # 每天交易4小时， 乘4 而不是24
         else:
             offset = req.end - req.start
-            offset = offset.days * 3600 * 24 + offset.seconds
+            offset = offset.days * 3600 * 4 + offset.seconds
 
         if req.interval == Interval.MINUTE:
             offset = offset / 60
