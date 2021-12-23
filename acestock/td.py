@@ -251,17 +251,21 @@ class TradeDataTD:
     def cancel_order(self, req: CancelRequest) -> None:
         """委托撤单"""
         # check today order
-        for order in self.api.today_entrusts:
-            if order['合同编号'] == req.orderid and order['委托状态'] == "未成交":
-                r = self.api.cancel_entrust(req.orderid)
-                if "成功" in r.get('message', ''):
-                    self.gateway.write_log(r['message'])
+        try:
+            for order in self.api.today_entrusts:
+                if order['合同编号'] == req.orderid and order['委托状态'] == "未成交":
+                    r = self.api.cancel_entrust(req.orderid)
+                    if "成功" in r.get('message', ''):
+                        self.gateway.write_log(r['message'])
+                    else:
+                        self.gateway.write_log(f"[{req.orderid}]撤单失败")
                 else:
-                    self.gateway.write_log(f"[{req.orderid}]撤单失败")
-            else:
-                self.gateway.write_log(
-                    f"[{req.orderid}]不满足撤单条件无法撤单 或 未在交易委托系统中生成订单无需撤单"
-                )
+                    self.gateway.write_log(
+                        f"[{req.orderid}]不满足撤单条件无法撤单 或 未在交易委托系统中生成订单无需撤单"
+                    )
+
+        except BaseException as e:
+            self.gateway.write_log(f"取消订单成交数据出错: {e}")
 
     def close(self):
         if self.api is not None:
