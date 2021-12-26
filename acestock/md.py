@@ -123,16 +123,12 @@ class MarketDataMD:
             year=tick_datetime.year, month=tick_datetime.month, day=tick_datetime.day,
             hour=15, minute=0, second=0, microsecond=0, tzinfo=tz)
 
-        # if not last_tick_df.empty:
-        #     tick = self.trans_tick_df_to_tick_data(last_tick_df, req)
-        #     self.gateway.on_tick(tick)
-
         while True:
             if (am_start_datetime <= tick_datetime <= am_end_datetime) \
                     or (pm_start_datetime <= tick_datetime <= pm_end_datetime):
                 df1 = await loop.run_in_executor(None, partial(client.transaction, **params))
                 last_tick_df = last_tick_df.append(df1).drop_duplicates()
-                if len(last_tick_df) != 1:
+                if len(last_tick_df) > 1:
                     last_tick_df = df1
                     tick = self.trans_tick_df_to_tick_data(last_tick_df, req)
                     self.gateway.on_tick(tick)
@@ -140,7 +136,7 @@ class MarketDataMD:
 
                 df2 = await loop.run_in_executor(None, partial(client.transaction, **params))
                 last_tick_df = last_tick_df.append(df2).drop_duplicates()
-                if len(last_tick_df) != 1:
+                if len(last_tick_df) > 1:
                     last_tick_df = df2
                     tick = self.trans_tick_df_to_tick_data(last_tick_df, req)
                     self.gateway.on_tick(tick)
