@@ -237,7 +237,7 @@ class TradeDataTD:
                         direction=order.direction,
                         offset=order.offset,
                         price=float(trade['成交均价']),
-                        volume=float(trade['成交数量']),
+                        volume=float(order.volume),  # 理论上 float(trade['成交数量']), 因为会出现2次成交信息,这里用order的量
                         datetime=trade_datetime,
                         gateway_name=self.gateway.gateway_name,
                     )
