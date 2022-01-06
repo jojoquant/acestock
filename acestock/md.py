@@ -274,9 +274,9 @@ class MarketDataMD:
         elif req.interval == Interval.HOUR:
             offset = offset / 60 / 60
         elif req.interval == Interval.DAILY:
-            offset = offset / 60 / 60 / 24
+            offset = offset / 60 / 60 / 4
         elif req.interval == Interval.WEEKLY:
-            offset = offset / 60 / 60 / 24 / 5
+            offset = offset / 60 / 60 / 4 / 5
 
         offset_const = 800  # pytdx 单次查询数据数目最大上限
         try:
