@@ -11,21 +11,13 @@ from typing import List
 from jotdx.consts import MARKET_SH, MARKET_SZ
 from jotdx.quotes import Quotes
 
+from joconst.maps import INTERVAL_TDX_MAP
+
 from vnpy.trader.gateway import BaseGateway
 from vnpy.trader.database import DATETIME_TZ
 from vnpy.trader.object import ContractData, HistoryRequest, BarData, SubscribeRequest, TickData
 from vnpy.trader.constant import Product, Exchange, Interval
 from vnpy.trader.utility import get_file_path, load_pickle, save_pickle
-
-Interval_to_frequency_dict = {
-    Interval.MINUTE: 8,
-    Interval.MINUTE_5: 0,
-    Interval.MINUTE_15: 1,
-    Interval.MINUTE_30: 2,
-    Interval.HOUR: 3,
-    Interval.DAILY: 4,
-    Interval.WEEKLY: 5,
-}
 
 
 class MarketDataMD:
@@ -284,7 +276,7 @@ class MarketDataMD:
                 start = 0
                 df = self.api.bars(
                     symbol=req.symbol,
-                    frequency=Interval_to_frequency_dict[req.interval],
+                    frequency=INTERVAL_TDX_MAP[req.interval],
                     offset=offset_const,
                     start=start
                 )
@@ -293,7 +285,7 @@ class MarketDataMD:
                     offset -= offset_const
                     offset_const_df = self.api.bars(
                         symbol=req.symbol,
-                        frequency=Interval_to_frequency_dict[req.interval],
+                        frequency=INTERVAL_TDX_MAP[req.interval],
                         offset=offset_const,
                         start=start
                     )
@@ -305,7 +297,7 @@ class MarketDataMD:
                     start += offset_const
                     res_df = self.api.bars(
                         symbol=req.symbol,
-                        frequency=Interval_to_frequency_dict[req.interval],
+                        frequency=INTERVAL_TDX_MAP[req.interval],
                         offset=offset,
                         start=start
                     )
@@ -315,7 +307,7 @@ class MarketDataMD:
             else:
                 df = self.api.bars(
                     symbol=req.symbol,
-                    frequency=Interval_to_frequency_dict[req.interval],
+                    frequency=INTERVAL_TDX_MAP[req.interval],
                     offset=int(offset)
                 )
         except Exception as e:
