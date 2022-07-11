@@ -13,7 +13,7 @@ from .td import TradeDataTD
 
 
 class AcestockGateway(BaseGateway):
-    gateway_name = "acestock"
+    default_name: str = "acestock"
     default_setting: Dict[str, Any] = {
         "broker": "universal_client",
         "user": "",
@@ -26,7 +26,7 @@ class AcestockGateway(BaseGateway):
     }
     exchanges: List[Exchange] = [Exchange.SSE, Exchange.SZSE]
 
-    def __init__(self, event_engine: EventEngine, gateway_name: str = gateway_name):
+    def __init__(self, event_engine: EventEngine, gateway_name: str):
         """构造函数"""
         super().__init__(event_engine, gateway_name)
 
@@ -42,7 +42,7 @@ class AcestockGateway(BaseGateway):
         else:
             bestip = False
             self.write_log("使用本地已记录的行情数据 bestip")
-        
+
         self.md.connect(bestip)
         self.td.connect(setting)
 
