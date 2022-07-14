@@ -53,7 +53,7 @@ class MarketDataMD:
 
     def connect(self, bestip: bool):
 
-        if self.datafeed.__class__.__name__ == "JotdxDataFeed":
+        if self.datafeed.__class__.__name__ == "JotdxDatafeed":
             self.datafeed.init()
             self.api = self.datafeed.std_api
         else:
