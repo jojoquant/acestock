@@ -6,19 +6,21 @@ from functools import partial
 import pandas as pd
 
 from asyncio import AbstractEventLoop
-from typing import List
+from typing import List, Dict
 
 from jotdx.consts import MARKET_SH, MARKET_SZ
+from jotdx.hq import TdxHq_API
 from jotdx.quotes import Quotes
 
 from joconst.maps import INTERVAL_TDX_MAP
+from jotdx.utils.best_ip_async import select_best_ip_async
 from tqdm import tqdm
 
 from vnpy.trader.gateway import BaseGateway
 from vnpy.trader.database import DATETIME_TZ
 from vnpy.trader.object import ContractData, HistoryRequest, BarData, SubscribeRequest, TickData
 from vnpy.trader.constant import Product, Exchange, Interval
-from vnpy.trader.utility import get_file_path, load_pickle, save_pickle
+from vnpy.trader.utility import get_file_path, load_pickle, save_pickle, save_json
 from vnpy.trader.datafeed import BaseDatafeed, get_datafeed
 
 
@@ -51,13 +53,30 @@ class MarketDataMD:
             self.gateway.write_log("行情线程中启动协程 loop 出现问题!")
             self.gateway.write_log(err)
 
-    def connect(self, bestip: bool):
+    def connect(self, setting: Dict[str, str]):
+        '''
+        setting 因为在widget里面显示text兼容，只能用str类型
+        main_engine.connect 时候先读取 widget 的 setting，然后保存，然后连接调用该处函数
+        连接流程在上游代码，无法改变，所以需要在这里再次保存一下最优 ip 和 port
+        filename = f"connect_{gateway_name.lower()}.json"
+        '''
 
         if self.datafeed.__class__.__name__ == "JotdxDatafeed":
             self.datafeed.init()
             self.api = self.datafeed.std_api
         else:
-            self.api = Quotes.factory(market='std', bestip=bestip, heartbeat=True, multithread=True)
+            if (setting["update_bestip"] == "y") \
+                    or (setting['last_best_ip'].strip() == "") \
+                    or (setting['last_best_port'].strip() == ""):
+
+                ip_port_dict = select_best_ip_async(_type="stock")
+                setting['last_best_ip'] = ip_port_dict['ip']
+                setting['last_best_port'] = str(ip_port_dict['port'])
+
+            self.api = TdxHq_API()
+            self.api.connect(ip=setting['last_best_ip'], port=int(setting['last_best_port']))
+
+            save_json(f"connect_{self.gateway.gateway_name.lower()}.json", setting)
 
         self.query_contract()
 
@@ -70,149 +89,40 @@ class MarketDataMD:
             self.gateway.write_log("行情线程启动出现问题!")
             self.gateway.write_log(err)
 
-    @staticmethod
-    def compute_offset(req):
-        if req.end is None:
-            offset = datetime.datetime.now(tz=DATETIME_TZ) - req.start
-            offset = offset.days * 3600 * 4 + offset.seconds  # 每天交易4小时， 乘4 而不是24
-        else:
-            offset = req.end - req.start
-            offset = offset.days * 3600 * 4 + offset.seconds
+    def get_stocks(self, market):
+        counts = self.api.get_security_count(market=market)
+        stocks = None
 
-        if req.interval == Interval.MINUTE:
-            offset = offset / 60
-        elif req.interval == Interval.MINUTE_5:
-            offset = offset / 60 / 5
-        elif req.interval == Interval.MINUTE_15:
-            offset = offset / 60 / 15
-        elif req.interval == Interval.MINUTE_30:
-            offset = offset / 60 / 30
-        elif req.interval == Interval.HOUR:
-            offset = offset / 60 / 60
-        elif req.interval == Interval.DAILY:
-            offset = offset / 60 / 60 / 4
-        elif req.interval == Interval.WEEKLY:
-            offset = offset / 60 / 60 / 4 / 5
+        for start in tqdm(range(0, counts, 1000)):
+            result = self.api.get_security_list(market=market, start=start)
+            stocks = (
+                pd.concat([stocks, self.api.to_df(result)], ignore_index=True)
+                if start > 1 else self.api.to_df(result)
+            )
 
-        return offset
+        return stocks
 
-    def mootdx_get_bar_data(self, req: HistoryRequest) -> List[BarData]:
-        history = []
+    def update_sh_index_daily_bar_df(self):
 
-        offset = self.compute_offset(req)
+        start = 0
+        offset = 700
+        all_df = pd.DataFrame()
 
-        offset_const = 800  # pytdx 单次查询数据数目最大上限
-        try:
-            if offset > offset_const:
-                start = 0
-                df = self.api.bars(
-                    symbol=req.symbol,
-                    frequency=INTERVAL_TDX_MAP[req.interval],
-                    offset=offset_const,
-                    start=start
-                )
-                while offset > offset_const:
-                    start += offset_const
-                    offset -= offset_const
-                    offset_const_df = self.api.bars(
-                        symbol=req.symbol,
-                        frequency=INTERVAL_TDX_MAP[req.interval],
-                        offset=offset_const,
-                        start=start
-                    )
-                    df = offset_const_df.append(df)
-                    if len(offset_const_df) < offset_const:
-                        offset = 0
-
-                if offset > 0:
-                    start += offset_const
-                    res_df = self.api.bars(
-                        symbol=req.symbol,
-                        frequency=INTERVAL_TDX_MAP[req.interval],
-                        offset=offset,
-                        start=start
-                    )
-                    if len(res_df) != 0:
-                        df = res_df.append(df)
-
-            else:
-                df = self.api.bars(
-                    symbol=req.symbol,
-                    frequency=INTERVAL_TDX_MAP[req.interval],
-                    offset=int(offset)
-                )
-        except Exception as e:
-            self.gateway.write_log(f"数据获取失败 {req}")
-            self.gateway.write_log(f"Exception : {e}")
-            return []
-
-        if df.empty:
-            return []
-
-        # 因为 req 的 start 和 end datetime 是带tzinfo的, 所以这里将datetime列进行添加tzinfo处理
-        df['datetime'] = pd.to_datetime(df['datetime'])
-        df.set_index('datetime', inplace=True)
-        df = df.tz_localize(DATETIME_TZ)
-        df.reset_index(inplace=True)
-
-        df = df[(df['datetime'] >= req.start) & (df['datetime'] <= req.end + datetime.timedelta(days=1))]
-        self.gateway.write_log(f"查询历史数据成功, {req.start} -> {req.end}, 共{len(df)}条数据, 开始转换数据...")
-
-        for _, series in df.iterrows():
-            history.append(
-                BarData(
-                    gateway_name=self.gateway.gateway_name,
-                    symbol=req.symbol,
-                    exchange=req.exchange,
-                    datetime=series['datetime'],
-                    interval=req.interval,
-                    volume=series['vol'],
-                    turnover=series['amount'],
-                    open_interest=0.0,
-                    open_price=series['open'],
-                    high_price=series['high'],
-                    low_price=series['low'],
-                    close_price=series['close']
+        while True:
+            df5 = self.api.to_df(
+                self.api.get_index_bars(
+                    category=INTERVAL_TDX_MAP[Interval.DAILY],
+                    market=MARKET_SH, code="000001", start=start, count=offset
                 )
             )
 
-        return history
+            if df5.empty:
+                break
 
-    def jotdx_get_bar_data(self, req: HistoryRequest) -> List[BarData]:
-        return self.api.query_bar_history(req=req)
+            all_df = pd.concat([df5, all_df])
+            start += offset
 
-    def get_stocks(self, market):
-        if self.datafeed.__class__.__name__ == "JotdxDataFeed":
-            counts = self.api.get_security_count(market=market)
-            stocks = None
-
-            for start in tqdm(range(0, counts, 1000)):
-                result = self.api.get_security_list(market=market, start=start)
-                stocks = (
-                    pd.concat([stocks, self.api.to_df(result)], ignore_index=True)
-                    if start > 1 else self.api.to_df(result)
-                )
-
-            return stocks
-
-        return self.api.stocks(market=market)
-
-    def get_trade_calendar(self):
-        pass
-        # all_df = pd.DataFrame()
-        # while True:
-        #     df5 = self.api.to_df(
-        #         self.api.get_index_bars(
-        #             category=frequency, market=market, code=symbol, start=start, count=offset
-        #         )
-        #     )
-        #
-        #     if df5.empty:
-        #         break
-        #
-        #     all_df = pd.concat([df5, all_df])
-        #     start += offset
-        #     print(start)
+        self.sh_index_daily_bar_df = all_df
 
     def trans_tick_df_to_tick_data(self, tick_df, req: SubscribeRequest) -> TickData:
         # buyorsell, 0 buy, 1 sell
@@ -399,12 +309,35 @@ class MarketDataMD:
             self.gateway.write_log(f"jotdx 行情接口获取合约信息出错: {e}")
 
     def query_history(self, req: HistoryRequest) -> List[BarData]:
-        if self.datafeed.__class__.__name__ == "JotdxDataFeed":
-            return self.jotdx_get_bar_data(req)
-
-        return self.mootdx_get_bar_data(req)
+        return self.api.query_bar_history(req=req)
 
     def close(self):
         if self.api is not None:
             self.api.close()
             self.gateway.write_log("行情服务器断开连接")
+
+
+def compute_offset(req):
+    if req.end is None:
+        offset = datetime.datetime.now(tz=DATETIME_TZ) - req.start
+        offset = offset.days * 3600 * 4 + offset.seconds  # 每天交易4小时， 乘4 而不是24
+    else:
+        offset = req.end - req.start
+        offset = offset.days * 3600 * 4 + offset.seconds
+
+    if req.interval == Interval.MINUTE:
+        offset = offset / 60
+    elif req.interval == Interval.MINUTE_5:
+        offset = offset / 60 / 5
+    elif req.interval == Interval.MINUTE_15:
+        offset = offset / 60 / 15
+    elif req.interval == Interval.MINUTE_30:
+        offset = offset / 60 / 30
+    elif req.interval == Interval.HOUR:
+        offset = offset / 60 / 60
+    elif req.interval == Interval.DAILY:
+        offset = offset / 60 / 60 / 4
+    elif req.interval == Interval.WEEKLY:
+        offset = offset / 60 / 60 / 4 / 5
+
+    return offset
