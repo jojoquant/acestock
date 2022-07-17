@@ -10,14 +10,12 @@ from typing import List, Dict
 
 from jotdx.consts import MARKET_SH, MARKET_SZ
 from jotdx.hq import TdxHq_API
-from jotdx.quotes import Quotes
 
-from joconst.maps import INTERVAL_TDX_MAP
+from joconst.maps import INTERVAL_TDX_MAP, JONPY_TDX_MARKET_MAP
 from jotdx.utils.best_ip_async import select_best_ip_async
 from tqdm import tqdm
 
 from vnpy.trader.gateway import BaseGateway
-from vnpy.trader.database import DATETIME_TZ
 from vnpy.trader.object import ContractData, HistoryRequest, BarData, SubscribeRequest, TickData
 from vnpy.trader.constant import Product, Exchange, Interval
 from vnpy.trader.utility import get_file_path, load_pickle, save_pickle, save_json
@@ -64,11 +62,12 @@ class MarketDataMD:
         if self.datafeed.__class__.__name__ == "JotdxDatafeed":
             self.datafeed.init()
             self.api = self.datafeed.std_api
+            setting['last_best_ip'] = self.api.ip
+            setting['last_best_port'] = str(self.api.port)
         else:
             if (setting["update_bestip"] == "y") \
                     or (setting['last_best_ip'].strip() == "") \
                     or (setting['last_best_port'].strip() == ""):
-
                 ip_port_dict = select_best_ip_async(_type="stock")
                 setting['last_best_ip'] = ip_port_dict['ip']
                 setting['last_best_port'] = str(ip_port_dict['port'])
@@ -76,7 +75,7 @@ class MarketDataMD:
             self.api = TdxHq_API()
             self.api.connect(ip=setting['last_best_ip'], port=int(setting['last_best_port']))
 
-            save_json(f"connect_{self.gateway.gateway_name.lower()}.json", setting)
+        save_json(f"connect_{self.gateway.gateway_name.lower()}.json", setting)
 
         self.query_contract()
 
@@ -124,88 +123,71 @@ class MarketDataMD:
 
         self.sh_index_daily_bar_df = all_df
 
-    def trans_tick_df_to_tick_data(self, tick_df, req: SubscribeRequest) -> TickData:
-        # buyorsell, 0 buy, 1 sell
-        # buyorsell = tick_df['buyorsell'][0]
-
+    def get_tick_data_name(self, req: SubscribeRequest):
         if any(req.symbol.startswith(stock_code) for stock_code in ["688", "60", "002", "000", "300"]):
-            last_price = tick_df['price'][0]
             name = self.contracts_dict[Product.EQUITY][req.vt_symbol].name
         elif any(req.symbol.startswith(bond_code) for bond_code in ["110", "113", "127", "128", "123"]):
-            last_price = round(tick_df['price'][0] / 10, 2)
             name = self.contracts_dict[Product.BOND][req.vt_symbol].name
         elif any(req.symbol.startswith(etf_code) for etf_code in ["58", "51", "56", "15"]):
-            last_price = round(tick_df['price'][0] / 10, 2)
             name = self.contracts_dict[Product.ETF][req.vt_symbol].name
         else:
-            last_price = 0.0
             name = "未知"
-
-        return TickData(
-            gateway_name=self.gateway.gateway_name,
-            name=name,
-            symbol=req.symbol,
-            exchange=req.exchange,
-            datetime=datetime.datetime.now(DATETIME_TZ),
-            volume=tick_df['vol'][0],
-            # num 放到turnover, 因为在bargenerater里面,
-            # turnover是累加计算的, open_interest 是不算累加的而取截面的
-            turnover=tick_df['num'][0],
-            last_price=last_price,
-        )
+        return name
 
     async def query_tick(self, req: SubscribeRequest):
 
-        client = Quotes.factory(market='std')
-        loop = asyncio.get_event_loop()
+        # [[1, '600301']]
+        params = [[JONPY_TDX_MARKET_MAP[req.exchange], req.symbol]]
 
-        params = {"symbol": req.symbol, "start": 0, "offset": 1}
-        last_tick_df = await loop.run_in_executor(None, partial(client.transaction, **params))
+        last_tick_data_list = await self.loop.run_in_executor(
+            None, partial(self.api.get_security_tick_data, params)
+        )
+        last_tick_data: TickData = last_tick_data_list[0]
 
-        tz = DATETIME_TZ
-        tick_datetime = datetime.datetime.now(tz)
+        now_datetime = datetime.datetime.now()
 
         am_start_datetime = datetime.datetime(
-            year=tick_datetime.year, month=tick_datetime.month, day=tick_datetime.day,
-            hour=9, minute=30, second=0, microsecond=0, tzinfo=tz)
+            year=now_datetime.year, month=now_datetime.month, day=now_datetime.day,
+            hour=0, minute=30, second=0, microsecond=0)
         am_end_datetime = datetime.datetime(
-            year=tick_datetime.year, month=tick_datetime.month, day=tick_datetime.day,
-            hour=11, minute=30, second=0, microsecond=0, tzinfo=tz)
+            year=now_datetime.year, month=now_datetime.month, day=now_datetime.day,
+            hour=11, minute=30, second=0, microsecond=0)
 
         pm_start_datetime = datetime.datetime(
-            year=tick_datetime.year, month=tick_datetime.month, day=tick_datetime.day,
-            hour=13, minute=0, second=0, microsecond=0, tzinfo=tz)
+            year=now_datetime.year, month=now_datetime.month, day=now_datetime.day,
+            hour=13, minute=0, second=0, microsecond=0)
         pm_end_datetime = datetime.datetime(
-            year=tick_datetime.year, month=tick_datetime.month, day=tick_datetime.day,
-            hour=15, minute=0, second=0, microsecond=0, tzinfo=tz)
+            year=now_datetime.year, month=now_datetime.month, day=now_datetime.day,
+            hour=15, minute=0, second=0, microsecond=0)
+
+        tick_data_name = self.get_tick_data_name(req)
 
         while True:
-            if (am_start_datetime <= tick_datetime <= am_end_datetime) \
-                    or (pm_start_datetime <= tick_datetime <= pm_end_datetime):
-                df1 = await loop.run_in_executor(None, partial(client.transaction, **params))
-                last_tick_df = last_tick_df.append(df1).drop_duplicates()
-                if len(last_tick_df) > 1:
-                    last_tick_df = df1
-                    tick = self.trans_tick_df_to_tick_data(last_tick_df, req)
-                    self.gateway.on_tick(tick)
+            if (am_start_datetime <= now_datetime <= am_end_datetime) \
+                    or (pm_start_datetime <= now_datetime <= pm_end_datetime):
+                tick_data_list = await self.loop.run_in_executor(
+                    None, partial(self.api.get_security_tick_data, params)
+                )
+                tick_data: TickData = tick_data_list[0]
+                tick_data.name = tick_data_name
+                if tick_data.server_time_str != last_tick_data.server_time_str:
+                    last_tick_data = tick_data
+                    self.gateway.on_tick(tick_data)
                 await asyncio.sleep(1.5)
 
-                df2 = await loop.run_in_executor(None, partial(client.transaction, **params))
-                last_tick_df = last_tick_df.append(df2).drop_duplicates()
-                if len(last_tick_df) > 1:
-                    last_tick_df = df2
-                    tick = self.trans_tick_df_to_tick_data(last_tick_df, req)
-                    self.gateway.on_tick(tick)
+                ######################################
+                # For test 实盘时注释掉下面tick_data推送
+                # self.gateway.on_tick(tick_data)
+                ######################################
 
-                await asyncio.sleep(1.5)
                 # 这里注意要更新时间
-                tick_datetime = datetime.datetime.now(tz)
+                now_datetime = datetime.datetime.now()
             else:
                 # 起到 heartbeat 的作用
-                _ = await loop.run_in_executor(None, partial(client.transaction, **params))
+                _ = await self.loop.run_in_executor(None, partial(self.api.get_security_tick_data, params))
 
                 await asyncio.sleep(3)
-                tick_datetime = datetime.datetime.now(tz)
+                now_datetime = datetime.datetime.now()
 
     @staticmethod
     def drop_unused_bond_df_row(df, unused_symbol_list):
@@ -298,9 +280,12 @@ class MarketDataMD:
                     )
                     self.gateway.on_contract(contract)
                     self.contracts_dict[Product.ETF][contract.vt_symbol] = contract
+
             try:
-                save_pickle(self.save_contracts_pkl_file_name, self.contracts_dict)
-                self.gateway.write_log("本地保存合约信息成功!")
+                if contract.gateway_name == self.gateway.default_name:
+                    save_pickle(self.save_contracts_pkl_file_name, self.contracts_dict)
+                    self.gateway.write_log("本地保存合约信息成功!")
+
             except BaseException as err:
                 self.gateway.write_log("本地保存合约信息失败!")
                 self.gateway.write_log(err)
@@ -315,29 +300,3 @@ class MarketDataMD:
         if self.api is not None:
             self.api.close()
             self.gateway.write_log("行情服务器断开连接")
-
-
-def compute_offset(req):
-    if req.end is None:
-        offset = datetime.datetime.now(tz=DATETIME_TZ) - req.start
-        offset = offset.days * 3600 * 4 + offset.seconds  # 每天交易4小时， 乘4 而不是24
-    else:
-        offset = req.end - req.start
-        offset = offset.days * 3600 * 4 + offset.seconds
-
-    if req.interval == Interval.MINUTE:
-        offset = offset / 60
-    elif req.interval == Interval.MINUTE_5:
-        offset = offset / 60 / 5
-    elif req.interval == Interval.MINUTE_15:
-        offset = offset / 60 / 15
-    elif req.interval == Interval.MINUTE_30:
-        offset = offset / 60 / 30
-    elif req.interval == Interval.HOUR:
-        offset = offset / 60 / 60
-    elif req.interval == Interval.DAILY:
-        offset = offset / 60 / 60 / 4
-    elif req.interval == Interval.WEEKLY:
-        offset = offset / 60 / 60 / 4 / 5
-
-    return offset

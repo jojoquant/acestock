@@ -194,7 +194,6 @@ class TradeDataTD:
 
             if order_id == "success":
                 self.gateway.write_log("系统配置未设置返回成交回报, 将影响撤单操作")
-                order_id = "xxxxxx" if order_id is None else order_id
                 order = req.create_order_data(order_id, self.gateway.gateway_name)
                 order.status = Status.SUBMITTING
                 self.gateway.orders[order_id] = order
