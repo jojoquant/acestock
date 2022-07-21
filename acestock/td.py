@@ -1,8 +1,8 @@
-import asyncio
-import threading
-import datetime
+# import asyncio
+# import threading
+# from asyncio import AbstractEventLoop
 
-from asyncio import AbstractEventLoop
+import datetime
 from copy import copy
 from typing import Dict
 
@@ -25,27 +25,27 @@ class TradeDataTD:
         self.gateway = gateway
         self.api = None
         self.api_setting = {}
-        self.thread: threading.Thread = None
-        self.loop: AbstractEventLoop = None
+        # self.thread: threading.Thread = None
+        # self.loop: AbstractEventLoop = None
 
         self.non_ths_client_list = ['htzq_client', 'ht_client', "gj_client"]
         self.ths_client_list = ['universal_client']
 
         self.datetime_format = "%Y-%m-%d %H:%M:%S"
 
-    def start_loop(self, loop):
-        """
-        轮询
-        使用easytrader查询1s ?? 变化的 当日成交 信息, 用于on_trade, 更新策略中的pos信息
-        easytrader 还可以查询当日委托, 可以对比出 未成交单
-        """
-        asyncio.set_event_loop(loop)
-        try:
-            self.gateway.write_log("交易线程中启动协程 loop ...")
-            loop.run_forever()
-        except BaseException as err:
-            self.gateway.write_log("交易线程中启动协程 loop 出现问题!")
-            self.gateway.write_log(err)
+    # def start_loop(self, loop):
+    #     """
+    #     轮询
+    #     使用easytrader查询1s ?? 变化的 当日成交 信息, 用于on_trade, 更新策略中的pos信息
+    #     easytrader 还可以查询当日委托, 可以对比出 未成交单
+    #     """
+    #     asyncio.set_event_loop(loop)
+    #     try:
+    #         self.gateway.write_log("交易线程中启动协程 loop ...")
+    #         loop.run_forever()
+    #     except BaseException as err:
+    #         self.gateway.write_log("交易线程中启动协程 loop 出现问题!")
+    #         self.gateway.write_log(err)
 
     def connect(self, setting):
         self.api_setting = setting
@@ -70,14 +70,14 @@ class TradeDataTD:
         except Exception as e:
             self.gateway.write_log(f"交易服务器连接失败! {e}")
 
-        try:
-            self.loop = asyncio.new_event_loop()  # 在当前线程下创建时间循环，（未启用），在start_loop里面启动它
-            self.thread = threading.Thread(target=self.start_loop, args=(self.loop,))  # 通过当前线程开启新的线程去启动事件循环
-            self.gateway.write_log("启动交易线程...")
-            self.thread.start()
-        except BaseException as err:
-            self.gateway.write_log("交易线程启动出现问题!")
-            self.gateway.write_log(err)
+        # try:
+        #     self.loop = asyncio.new_event_loop()  # 在当前线程下创建时间循环，（未启用），在start_loop里面启动它
+        #     self.thread = threading.Thread(target=self.start_loop, args=(self.loop,))  # 通过当前线程开启新的线程去启动事件循环
+        #     self.gateway.write_log("启动交易线程...")
+        #     self.thread.start()
+        # except BaseException as err:
+        #     self.gateway.write_log("交易线程启动出现问题!")
+        #     self.gateway.write_log(err)
 
     def query_account(self) -> None:
         """查询资金"""

@@ -1,4 +1,5 @@
 import asyncio
+from asyncio import ProactorEventLoop
 from typing import Dict, Any, List
 from vnpy.event import EventEngine
 from vnpy.trader.constant import Exchange
@@ -51,7 +52,11 @@ class AcestockGateway(BaseGateway):
         if req not in self.md.api_subscribe_req_list:
             self.md.api_subscribe_req_list.append(req.symbol)
             coroutine = self.md.query_tick(req)
-            asyncio.run_coroutine_threadsafe(coroutine, self.md.loop)
+            if isinstance(self.md.loop, ProactorEventLoop):
+                asyncio.run_coroutine_threadsafe(coroutine, self.md.loop)
+            else:
+                self.write_log(f"self.md.loop is {self.md.loop}, cancel req subcribe")
+                self.write_log(f"req: {req}")
 
     def send_order(self, req: OrderRequest) -> str:
         """委托下单"""

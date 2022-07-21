@@ -148,19 +148,19 @@ class MarketDataMD:
 
         am_start_datetime = datetime.datetime(
             year=now_datetime.year, month=now_datetime.month, day=now_datetime.day,
-            hour=0, minute=30, second=0, microsecond=0)
+            hour=9, minute=30, second=0, microsecond=0)
         am_end_datetime = datetime.datetime(
             year=now_datetime.year, month=now_datetime.month, day=now_datetime.day,
-            hour=11, minute=30, second=0, microsecond=0)
+            hour=11, minute=31, second=0, microsecond=0)
 
         pm_start_datetime = datetime.datetime(
             year=now_datetime.year, month=now_datetime.month, day=now_datetime.day,
             hour=13, minute=0, second=0, microsecond=0)
         pm_end_datetime = datetime.datetime(
             year=now_datetime.year, month=now_datetime.month, day=now_datetime.day,
-            hour=15, minute=0, second=0, microsecond=0)
+            hour=15, minute=1, second=0, microsecond=0)
 
-        tick_data_name = self.get_tick_data_name(req)
+        # tick_data_name = self.get_tick_data_name(req)
 
         while True:
             if (am_start_datetime <= now_datetime <= am_end_datetime) \
@@ -169,7 +169,7 @@ class MarketDataMD:
                     None, partial(self.api.get_security_tick_data, params)
                 )
                 tick_data: TickData = tick_data_list[0]
-                tick_data.name = tick_data_name
+                tick_data.name = self.get_tick_data_name(req)
                 if tick_data.server_time_str != last_tick_data.server_time_str:
                     last_tick_data = tick_data
                     self.gateway.on_tick(tick_data)
@@ -178,6 +178,7 @@ class MarketDataMD:
                 ######################################
                 # For test 实盘时注释掉下面tick_data推送
                 # self.gateway.on_tick(tick_data)
+                # print("[acestock]" , tick_data)
                 ######################################
 
                 # 这里注意要更新时间
@@ -229,6 +230,9 @@ class MarketDataMD:
             )
             # sz_bond_df = self.drop_unused_bond_df_row(sz_bond_df, ["110801", "110802"])
 
+            last_stock_contract: ContractData = None
+            last_bond_contract: ContractData = None
+            last_etf_contract: ContractData = None
             exchange_list = [Exchange.SSE, Exchange.SZSE]
             for stock_df, exchange in zip([sh_stock_df, sz_stock_df], exchange_list):
                 for row in stock_df.iterrows():
@@ -246,6 +250,7 @@ class MarketDataMD:
                     )
                     self.gateway.on_contract(contract)
                     self.contracts_dict[Product.EQUITY][contract.vt_symbol] = contract
+            last_stock_contract = contract
 
             for bond_df, exchange in zip([sh_bond_df, sz_bond_df], exchange_list):
                 for row in bond_df.iterrows():
@@ -263,6 +268,7 @@ class MarketDataMD:
                     )
                     self.gateway.on_contract(contract)
                     self.contracts_dict[Product.BOND][contract.vt_symbol] = contract
+            last_bond_contract = contract
 
             for etf_df, exchange in zip([sh_etf_df, sz_etf_df], exchange_list):
                 for row in etf_df.iterrows():
@@ -280,9 +286,13 @@ class MarketDataMD:
                     )
                     self.gateway.on_contract(contract)
                     self.contracts_dict[Product.ETF][contract.vt_symbol] = contract
+            last_etf_contract = contract
 
             try:
-                if contract.gateway_name == self.gateway.default_name:
+                cond1 = last_stock_contract.gateway_name == self.gateway.default_name
+                cond2 = last_bond_contract.gateway_name == self.gateway.default_name
+                cond3 = last_etf_contract.gateway_name == self.gateway.default_name
+                if cond1 and cond2 and cond3:
                     save_pickle(self.save_contracts_pkl_file_name, self.contracts_dict)
                     self.gateway.write_log("本地保存合约信息成功!")
 
