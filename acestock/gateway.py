@@ -9,8 +9,8 @@ from vnpy.trader.object import (
     SubscribeRequest, OrderRequest, CancelRequest, OrderData, HistoryRequest, BarData
 )
 
-from .md import MarketDataMD
-from .td import TradeDataTD
+from acestock.md import MarketDataMD
+from acestock.td import TradeDataTD
 
 
 class AcestockGateway(BaseGateway):
@@ -78,3 +78,38 @@ class AcestockGateway(BaseGateway):
         Query bar history data.
         """
         return self.md.query_history(req)
+
+
+if __name__ == '__main__':
+    from vnpy.trader.utility import load_json
+    from joconst.object import Product, ContractData, Interval
+    from datetime import datetime
+    from vnpy.trader.datafeed import get_datafeed
+    import dolphindb as ddb
+
+    event_engine = EventEngine()
+    filename = f"connect_{AcestockGateway.default_name}.json"
+    setting_dict = load_json(filename)
+
+    # datafeed 里面写了 while 循环 concate 拼接数据
+    vnpy_jotdx_datafeed = get_datafeed()
+    vnpy_jotdx_datafeed.init()
+
+    # acestock 和 vnpy_jotdx 里面都有获取全部的 股票市场 合约数据的方法
+    # vnpy_jotdx datafeed 里面 多了期货合约的获取, 但是jotdx底层这里获取有问题, 不同服务器获取不全
+    # 所以期货合约数据主要还是来源于 ctp 或者 tts 这些 gateway 的行情接口
+    acestock_gateway = AcestockGateway(event_engine=event_engine, gateway_name=AcestockGateway.default_name)
+    acestock_gateway.md.connect(setting_dict)
+
+    v: ContractData
+    for _, v in acestock_gateway.md.contracts_dict[Product.BOND].items():
+        req = HistoryRequest(
+            symbol=v.symbol,
+            exchange=v.exchange,
+            start=datetime(2000, 1, 1),
+            end=datetime.now(),
+            interval=Interval.MINUTE
+        )
+        df = acestock_gateway.md.datafeed.query_bar_df_history(req=req)
+        print(1)
+    print(1)

@@ -27,7 +27,7 @@ class MarketDataMD:
     def __init__(self, gateway: BaseGateway):
         self.gateway: BaseGateway = gateway
         self.datafeed: BaseDatafeed = get_datafeed()
-        self.api = None
+        self.api: TdxHq_API = None
         self.api_subscribe_req_list = []
         self.thread: threading.Thread = None
         self.loop: AbstractEventLoop = None
@@ -72,7 +72,7 @@ class MarketDataMD:
                 setting['last_best_ip'] = ip_port_dict['ip']
                 setting['last_best_port'] = str(ip_port_dict['port'])
 
-            self.api = TdxHq_API()
+            self.api = TdxHq_API(auto_retry=True)
             self.api.connect(ip=setting['last_best_ip'], port=int(setting['last_best_port']))
 
         save_json(f"connect_{self.gateway.gateway_name.lower()}.json", setting)
@@ -214,7 +214,7 @@ class MarketDataMD:
             self.gateway.write_log("行情接口开始获取合约信息 ...")
             sh_df = self.get_stocks(market=MARKET_SH)
             sh_stock_df = sh_df[sh_df['code'].str.contains("^((688)[\d]{3}|(60[\d]{4}))$")]
-            sh_bond_df = sh_df[sh_df['code'].str.contains("^(110|113)[\d]{3}$")]
+            sh_bond_df = sh_df[sh_df['code'].str.contains("^(110|111|113)[\d]{3}$")]
             sh_etf_df = sh_df[sh_df['code'].str.contains("^(58|51|56)[\d]{4}$")]
 
             sz_df = self.get_stocks(market=MARKET_SZ)
