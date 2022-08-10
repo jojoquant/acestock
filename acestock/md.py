@@ -214,7 +214,7 @@ class MarketDataMD:
             self.gateway.write_log("行情接口开始获取合约信息 ...")
             sh_df = self.get_stocks(market=MARKET_SH)
             sh_stock_df = sh_df[sh_df['code'].str.contains("^((688)[\d]{3}|(60[\d]{4}))$")]
-            sh_bond_df = sh_df[sh_df['code'].str.contains("^(110|111|113)[\d]{3}$")]
+            sh_bond_df = sh_df[sh_df['code'].str.contains("^(110|111|113|118)[\d]{3}$")]
             sh_etf_df = sh_df[sh_df['code'].str.contains("^(58|51|56)[\d]{4}$")]
 
             sz_df = self.get_stocks(market=MARKET_SZ)
@@ -225,8 +225,7 @@ class MarketDataMD:
             sh_bond_df = self.drop_unused_bond_df_row(
                 sh_bond_df,
                 ["110801", "110802", "110804", "110807", "110808",
-                 "110810", "110811", "110812", "110813",
-                 "113633", "113634", "113635", "113636"]
+                 "110810", "110811", "110812", "110813"]
             )
             # sz_bond_df = self.drop_unused_bond_df_row(sz_bond_df, ["110801", "110802"])
 
